@@ -1,0 +1,12 @@
+node_modules/
+output/
+public/projects/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+.remotion/
+projects/
+public/music/
+.demo-input.mp4

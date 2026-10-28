@@ -1,0 +1,58 @@
+[
+  {
+    "file": "sfx/click.ogg",
+    "original": "click_001.ogg",
+    "creator": "Kenney",
+    "license": "CC0-1.0",
+    "source": "https://opengameart.org/content/interface-sounds",
+    "sha256": "ccfb7fa0cccdd9faec0eb16033c732b1e308d139d80f799161495d58f7adcdb9"
+  },
+  {
+    "file": "sfx/pop.ogg",
+    "original": "drop_001.ogg",
+    "creator": "Kenney",
+    "license": "CC0-1.0",
+    "source": "https://opengameart.org/content/interface-sounds",
+    "sha256": "692ee3a6f1821402ca649ff735bee9591dc4846c8098fc7d6a90fd15fa57c1af"
+  },
+  {
+    "file": "sfx/impact.ogg",
+    "original": "bong_001.ogg",
+    "creator": "Kenney",
+    "license": "CC0-1.0",
+    "source": "https://opengameart.org/content/interface-sounds",
+    "sha256": "d21d0f0b782445db579d11e2506b24cd1ac9d664ee33aeaf807761aa7b6fd710"
+  },
+  {
+    "file": "sfx/confirm.ogg",
+    "original": "confirmation_001.ogg",
+    "creator": "Kenney",
+    "license": "CC0-1.0",
+    "source": "https://opengameart.org/content/interface-sounds",
+    "sha256": "063564703b6094d70718a3e787a55cc9141611e4ecd6b6637f8828f79b4a8c3a"
+  },
+  {
+    "file": "sfx/glitch.ogg",
+    "original": "glitch_001.ogg",
+    "creator": "Kenney",
+    "license": "CC0-1.0",
+    "source": "https://opengameart.org/content/interface-sounds",
+    "sha256": "da78c642bbd95da2c364ed0e991ebbfc5a4c0d281165d932b5819e0dd31a39d2"
+  },
+  {
+    "file": "sfx/whoosh-1.wav",
+    "original": "swish-1.wav",
+    "creator": "artisticdude",
+    "license": "CC0-1.0",
+    "source": "https://opengameart.org/content/swishes-sound-pack",
+    "sha256": "9a15c881345c1ce1c39cc31f52f081c8c4dc81fa41111e0079400f39d3ba0e45"
+  },
+  {
+    "file": "sfx/whoosh-2.wav",
+    "original": "swish-2.wav",
+    "creator": "artisticdude",
+    "license": "CC0-1.0",
+    "source": "https://opengameart.org/content/swishes-sound-pack",
+    "sha256": "1ce7752cce3d43f16fc222ad7f7ffb69d9a5fc01e64b93d205765fc37b8e9b0d"
+  }
+]
