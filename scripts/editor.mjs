@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {safeSlug,validateEdit,durationFrames,mediaPath} from '../src/edit.mjs';
+import {parseSrt,mapCaptions} from '../src/captions.mjs';
 const root=process.cwd();
 function execute(command,args,options={}){
  const result=spawnSync(command,args,{encoding:'utf8',...options});
@@ -17,10 +18,11 @@ function probe(file){
  return duration;
 }
 function project(slug){safeSlug(slug);return path.join(root,'projects',slug);}
-function load(slug){
+function load(slug,replaceCaptions=false){
  const filename=path.join(project(slug),'edit.json');
  if(!fs.existsSync(filename))throw new Error(`Project not found: ${filename}. Run npm run init -- ${slug} --input /path/to/video.mp4`);
- const edit=validateEdit(JSON.parse(fs.readFileSync(filename,'utf8')));
+ const parsed=JSON.parse(fs.readFileSync(filename,'utf8'));
+ const edit=validateEdit(replaceCaptions?{...parsed,captions:[]}:parsed);
  for(const relative of [edit.source,...(edit.sfx??[]).map(x=>x.src),...(edit.music?[edit.music.src]:[])]){
   const filename=mediaPath(root,relative);if(!fs.existsSync(filename)||!fs.statSync(filename).isFile())throw new Error(`Media missing: public/${relative}`);
  }
@@ -43,12 +45,32 @@ function init(slug,input){
  console.log(`Created projects/${slug}/edit.json. Edit it, then run npm run validate -- ${slug}`);
  return edit;
 }
-function render(slug){
+function render(slug,draft=false){
  const edit=load(slug);const props=path.join(project(slug),'.render-props.json');
  fs.writeFileSync(props,JSON.stringify({edit}));fs.mkdirSync(path.join(root,'output'),{recursive:true});
  const cli=path.join(root,'node_modules','@remotion','cli','remotion-cli.js');
- execute(process.execPath,[cli,'render','src/index.ts','BennettsEditor',`output/${slug}.mp4`,'--props',props,'--codec','h264','--crf','20','--concurrency','2'],{stdio:'inherit'});
- console.log(`Exported output/${slug}.mp4`);
+ const output=draft?`output/drafts/${slug}.mp4`:`output/${slug}.mp4`;
+ fs.mkdirSync(path.dirname(path.join(root,output)),{recursive:true});
+ const quality=draft?['--crf','28','--scale','0.5']:['--crf','20'];
+ execute(process.execPath,[cli,'render','src/index.ts','BennettsEditor',output,'--props',props,'--codec','h264',...quality,'--concurrency','2'],{stdio:'inherit'});
+ console.log(`Exported ${output}`);
+}
+function captions(slug,args){
+ if(args[0]!=='--srt'||!args[1]||args.length>3||(args[2]!==undefined&&args[2]!=='--apply'))throw new Error('Usage: npm run captions -- <slug> --srt /path/to/source.srt [--apply]');
+ const edit=load(slug,true);
+ const filename=path.resolve(args[1]);
+ if(!fs.existsSync(filename)||!fs.statSync(filename).isFile())throw new Error('SRT file is missing. Use --srt /path/to/source.srt');
+ const sourceCues=parseSrt(fs.readFileSync(filename,'utf8'));
+ const mapped=mapCaptions(sourceCues,edit.clips);
+ const proposed=validateEdit({...edit,captions:mapped});
+ const proposalFile=path.join(project(slug),'captions.proposed.json');
+ fs.writeFileSync(proposalFile,JSON.stringify(mapped,null,2)+'\n');
+ console.log(`Wrote ${mapped.length} output-clock caption segments to projects/${slug}/captions.proposed.json.`);
+ console.log('Cues spanning a cut repeat their full phrase in each retained segment. Review text and timing; this is not word alignment.');
+ if(args[2]==='--apply'){
+  fs.writeFileSync(path.join(project(slug),'edit.json'),JSON.stringify(proposed,null,2)+'\n');
+  console.log('Applied captions to edit.json. Existing clips, cards, music and SFX were preserved.');
+ }else console.log('edit.json was not changed. Add --apply to replace its captions after review.');
 }
 function demo(){
  const slug='demo';if(fs.existsSync(project(slug))||fs.existsSync(path.join(root,'public/projects/demo')))throw new Error('Demo already exists. Run npm run render -- demo to render it again.');
@@ -65,6 +87,8 @@ try{
  if(command==='init')init(slug,args[0]==='--input'?args[1]:undefined);
  else if(command==='validate'){const edit=load(slug);console.log(`Valid: ${durationFrames(edit)} frames, ${(durationFrames(edit)/30).toFixed(2)} seconds, 1080×1920 at 30fps.`);}
  else if(command==='render')render(slug);
+ else if(command==='draft')render(slug,true);
+ else if(command==='captions')captions(slug,args);
  else if(command==='demo')demo();
- else throw new Error('Usage: npm run init -- <slug> --input <video> | npm run validate -- <slug> | npm run render -- <slug> | npm run demo');
+ else throw new Error('Usage: npm run init -- <slug> --input <video> | npm run validate -- <slug> | npm run render -- <slug> | npm run draft -- <slug> | npm run captions -- <slug> --srt <file> [--apply] | npm run demo');
 }catch(error){console.error(`Editor: ${error.message}`);process.exitCode=1;}

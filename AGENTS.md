@@ -11,3 +11,5 @@ All clip timestamps use the source recording; all overlay/audio-cue timestamps u
 Keep additions in the starter's existing style. Run npm test and npm run typecheck for code changes. Validate the project's edit.json before rendering, then inspect the exported video and report any checks you could not perform.
 
 No social posting is configured. Deliver a local MP4 for the student to review and upload.
+
+For source-timed SRT, use the captions command to create a proposal before applying it. Re-import after cut revisions and check partially retained phrases manually. Use per-clip zoom/focus for basic framing and draft renders for review; never describe these controls as automatic face tracking or word alignment.

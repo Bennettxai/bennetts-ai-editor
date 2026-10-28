@@ -1,9 +1,30 @@
 {
-  "name": "bennetts-ai-editor", "version": "1.0.0", "private": true, "type": "module",
+  "name": "bennetts-ai-editor",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
   "scripts": {
-    "init": "node scripts/editor.mjs init", "validate": "node scripts/editor.mjs validate", "render": "node scripts/editor.mjs render", "demo": "node scripts/editor.mjs demo", "studio": "remotion studio src/index.ts", "test": "node --test tests/*.test.mjs", "typecheck": "tsc --noEmit"
+    "init": "node scripts/editor.mjs init",
+    "validate": "node scripts/editor.mjs validate",
+    "render": "node scripts/editor.mjs render",
+    "demo": "node scripts/editor.mjs demo",
+    "studio": "remotion studio src/index.ts",
+    "test": "node --test tests/*.test.mjs",
+    "typecheck": "tsc --noEmit",
+    "captions": "node scripts/editor.mjs captions",
+    "draft": "node scripts/editor.mjs draft"
   },
-  "dependencies": {"@remotion/cli": "4.0.536", "remotion": "4.0.536", "react": "18.3.1", "react-dom": "18.3.1"},
-  "devDependencies": {"@types/react": "18.3.3", "typescript": "5.4.5"},
-  "engines": {"node": ">=20"}
+  "dependencies": {
+    "@remotion/cli": "4.0.536",
+    "remotion": "4.0.536",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.3",
+    "typescript": "5.4.5"
+  },
+  "engines": {
+    "node": ">=20"
+  }
 }

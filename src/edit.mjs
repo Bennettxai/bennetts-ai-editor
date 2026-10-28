@@ -30,6 +30,10 @@ export function validateEdit(edit) {
  const clips=rows(edit.clips,'clips');if(!clips.length)throw new Error('At least one clip is required.');
  let last=0;
  for(const c of clips){if(!c||!finite(c.start)||!finite(c.end)||c.start<last||c.end<=c.start||Math.round(c.end*FPS)<=Math.round(c.start*FPS))throw new Error('Clip ranges must be finite, positive, chronological and nonoverlapping (at least one frame).');last=c.end;}
+ for(const clip of clips){
+  if(clip.zoom!==undefined&&(!finite(clip.zoom)||clip.zoom<1||clip.zoom>1.5))throw new Error('Clip zoom must be between 1 and 1.5.');
+  for(const key of ['focusX','focusY'])if(clip[key]!==undefined&&(!finite(clip[key])||clip[key]<0||clip[key]>100))throw new Error('Clip focus must be between 0 and 100.');
+ }
  const total=durationFrames(edit)/FPS;
  for(const key of ['captions','cards']){
   let prev=0;

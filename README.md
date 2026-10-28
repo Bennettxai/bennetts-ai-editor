@@ -9,9 +9,12 @@ Open this folder in Claude Code or Codex, give it your footage, and describe the
 - A simple, editable JSON timeline
 - Hard cuts between the parts of your recording you want to keep
 - Phrase captions and basic animated title cards
+- SRT caption import that follows your cuts
+- Per-clip zoom and framing controls
+- Quick 540 × 960 draft renders before the full export
 - Bennett Legacy monochrome styling
 - Seven bundled CC0 sound effects
-- Optional background music you provide
+- Optional background music you provide, with automatic fade-in/out
 - A synthetic demo to test your setup without filming anything
 
 This is a starter template. It does not automatically transcribe recordings, detect faces, pick B-roll, build custom platform demos, or post to social media.
@@ -41,14 +44,17 @@ Then open the repo in your coding assistant and ask:
 
 Provide a timestamped transcript or help the assistant review the footage. If it has a transcription tool available, it can use that separately; this repo does not bundle or configure one. It should never invent your spoken words.
 
+If you have an SRT transcript, import it with `npm run captions -- my-first-video --srt "/path/to/transcript.srt"`. This writes a proposal for review; add `--apply` to replace project captions. See the [editing guide](docs/EDITING.md) for details.
+
 After editing `projects/my-first-video/edit.json`:
 
 ```bash
 npm run validate -- my-first-video
+npm run draft -- my-first-video
 npm run render -- my-first-video
 ```
 
-Your finished video is written to `output/my-first-video.mp4`. Review the whole video with sound before publishing.
+The fast draft is written to `output/drafts/my-first-video.mp4`. Your finished video is written to `output/my-first-video.mp4`. Review the whole video with sound before publishing.
 
 ## How the files fit together
 

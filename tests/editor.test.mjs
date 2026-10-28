@@ -41,3 +41,29 @@ test('CLI creates project from actual media and refuses overwrite or missing fil
   result=run('validate','test-video');assert.notEqual(result.status,0);assert.match(result.stderr,/source duration/i);
  } finally {fs.rmSync(root,{recursive:true,force:true});}
 });
+
+test('clip framing rejects invalid zoom or focal points but accepts moderate punch-ins',()=>{
+ for(const extra of [{zoom:.9},{zoom:2},{zoom:NaN},{focusX:-1},{focusY:101},{focusX:'50'}]){
+  assert.throws(()=>validateEdit({...example(),clips:[{start:0,end:2.5,...extra}]}),/zoom|focus/i);
+ }
+ assert.equal(validateEdit({...example(),clips:[{start:0,end:2.5,zoom:1.2,focusX:60,focusY:20}]}).clips[0].zoom,1.2);
+});
+
+test('clip presentation applies framing without altering timeline length',async()=>{
+ const {clipPresentation}=await import('../src/presentation.mjs');
+ assert.equal(typeof clipPresentation,'function');
+ assert.deepEqual(clipPresentation({start:0,end:2,zoom:1.2,focusX:60,focusY:20}),{
+  objectFit:'cover',objectPosition:'60% 20%',transform:'scale(1.2)',transformOrigin:'60% 20%'
+ });
+ assert.equal(clipPresentation({start:0,end:2}).transform,'scale(1)');
+});
+
+test('music fades at both edit boundaries and never exceeds selected level',async()=>{
+ const {musicLevel}=await import('../src/presentation.mjs');
+ assert.equal(typeof musicLevel,'function');
+ assert.equal(musicLevel(0,90,.1),0);
+ assert.equal(musicLevel(15,90,.1),.1);
+ assert.equal(musicLevel(89,90,.1),0);
+ assert.equal(musicLevel(74,90,.1),.1);
+ assert.ok(musicLevel(4,8,.1)>0 && musicLevel(4,8,.1)<=.1);
+});

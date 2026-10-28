@@ -54,7 +54,7 @@ Copy a licensed track to `public/music/background.mp3` and add this top-level fi
 "music": {"src": "music/background.mp3", "volume": 0.08}
 ```
 
-Use a public-relative path, without `public/` at the beginning. Start quietly, listen, then adjust. A volume value is a linear multiplier, not decibels. Music starts with the edit and loops if it is shorter than the video. No song or license for a song is included.
+Use a public-relative path, without `public/` at the beginning. Start quietly, listen, then adjust. A volume value is a linear multiplier, not decibels. Music starts with the edit and loops if it is shorter than the video. It fades in and out over half a second at each boundary (shortened for very short edits); this is not automatic speech ducking. No song or license for a song is included.
 
 ## Work with your assistant
 
@@ -71,10 +71,49 @@ npm run render -- first-post
 
 Open `output/first-post.mp4`. Check the beginning and end of every cut, caption spelling, face framing, and music/SFX balance. Check the entire video with headphones or speakers before posting. Rendering again replaces that project's output MP4, so copy a version you want to keep first.
 
-The default layout is designed for a single speaker. Horizontal footage is cropped to fill the vertical video region; if the speaker is off-center, adjust the composition or prepare a better-framed source first.
+The default layout is designed for a single speaker. Horizontal footage is cropped to fill the vertical video region. Use the framing controls below to position the speaker; this is manual framing, not face tracking.
 
 ## Demo and privacy
 
 `npm run demo` generates a short color-pattern recording with a quiet test tone, then adds a card, captions and two sound cues. It is a setup check, not an example of a completed talking-head edit. If the demo already exists, use `npm run render -- demo` to render it again.
 
 Personal media and project files stay local and are ignored by Git. Keep footage under `public/projects/<slug>/` and music under `public/music/` so that protection applies automatically. Files you place elsewhere under `public/` can be committed unless you add them to `.gitignore`.
+
+
+## Import captions from SRT
+
+Use an SRT transcript timed to the **original recording**, not a previously edited export:
+
+```bash
+npm run captions -- first-post --srt "/path/to/transcript.srt"
+```
+
+The importer drops cues in removed sections and maps the remaining cues to the final timeline. It writes `projects/first-post/captions.proposed.json` for review and leaves your edit unchanged. Once reviewed:
+
+```bash
+npm run captions -- first-post --srt "/path/to/transcript.srt" --apply
+```
+
+This replaces the caption list in `edit.json`; keep a copy if you want to preserve hand-edited captions. The tool does not transcribe audio. Export SRT from a transcription service/editor you already use and check the text yourself.
+
+A cue crossing a cut is shortened or split, retaining its full phrase in each kept fragment. SRT has phrase timing, not exact word timing: review split phrases, especially around cuts that remove spoken words. Overlapping, malformed or overly long cues are rejected rather than silently merged. Keep cues under 100 characters.
+
+After changing cuts, re-import captions from the original SRT. Existing title cards and SFX still need their output times checked manually.
+
+## Set zoom and framing
+
+Each clip accepts optional `zoom`, `focusX` and `focusY` fields:
+
+```json
+{"start": 10, "end": 14, "zoom": 1.15, "focusX": 50, "focusY": 20}
+```
+
+`zoom` ranges from 1 to 1.5 (default 1). `focusX` and `focusY` range from 0 to 100 and control the crop position and zoom origin. Defaults are 50 and 0: centered horizontally, aligned to the top. Values describe placement within the available crop, not detected face coordinates. A modest static punch-in on the next clip can emphasize a new thought. Avoid zooming so far that you cut off your head.
+
+## Render a fast draft
+
+```bash
+npm run draft -- first-post
+```
+
+This exports `output/drafts/first-post.mp4` at 540 × 960 using the same timing and framing. Use it for cut and caption review, then `npm run render -- first-post` for the full 1080 × 1920 export. Each command replaces only its corresponding output file.

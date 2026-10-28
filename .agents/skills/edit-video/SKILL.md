@@ -9,8 +9,9 @@ description: Make a simple vertical talking-head edit with cuts, phrase captions
 2. Review the recording and transcript if available. If you cannot inspect or transcribe speech, ask for a timestamped transcript. Never invent a transcript.
 3. Propose a short cut list. Keep complete thoughts, remove obvious false starts and long empty gaps, and preserve the source. Get the user's approval before applying dialogue cuts.
 4. Edit `projects/<slug>/edit.json`. Use source-clock clip ranges and final-edit-clock overlays. Add short phrase captions and at most a few title cards. Use the basic Bennett Legacy composition.
+   If the user supplies source-timed SRT, run `npm run captions -- <slug> --srt "<path>"`. Review the proposal and use `--apply` only when replacing captions is intended. Check split phrases around cuts; the importer does not know individual word timings. Use optional per-clip zoom/focus fields for basic framing.
 5. Optionally add a few sounds from public/sfx/README.md. Keep them below the speaker's voice. Use background music only when the user supplies a licensed track.
-6. Run `npm run validate -- <slug>` and fix any errors. Run `npm run render -- <slug>`.
+6. Run `npm run validate -- <slug>` and fix any errors. Render a quick review with `npm run draft -- <slug>`, then the full export with `npm run render -- <slug>` after reviewing timing and framing.
 7. Review the exported video for complete speech, readable captions, framing and audio balance. If you cannot hear or view the result, say so. Give the user the output path and make requested revisions.
 
 Keep this workflow straightforward. Custom scenes, automatic posting and external account setup are outside this starter.
