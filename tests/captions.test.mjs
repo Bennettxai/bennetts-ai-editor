@@ -77,3 +77,26 @@ test('caption import repairs stale captions after cuts but still rejects stale c
   result=run('captions','test-video','--srt',srt,'--apply');assert.notEqual(result.status,0);assert.match(result.stderr,/cards/);assert.equal(fs.readFileSync(editFile,'utf8'),invalid);
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+// --- Word captions (v2) ---
+import {mapWords, captionsFromWords} from '../src/captions.mjs';
+const word=(text,start,end)=>({text,start,end});
+test('mapWords moves kept words to the output clock and drops words that were cut',()=>{
+ const words=[word('cut',0,.5),word('kept',2.1,2.4),word('edge',2.9,3.2),word('later',4.2,4.5)];
+ assert.deepEqual(mapWords(words,[{start:2,end:3},{start:4,end:5}]),[word('kept',.1,.4),word('edge',.9,1),word('later',1.2,1.5)]);
+});
+test('captionsFromWords: one caps word at a time, back to back in speech, blank in pauses, min dwell',()=>{
+ const caps=captionsFromWords([word("don't,",0,.1),word('stop.',.15,.6),word('Ever',1.5,1.9)],2);
+ assert.deepEqual(caps,[cue(0,.15,"DON'T"),cue(.15,.6,'STOP'),cue(1.5,1.9,'EVER')]);
+ const short=captionsFromWords([word('a',0,.03),word('b',1,1.03)],2);
+ assert.ok(short.every(c=>c.end-c.start>=.18-1e-9),'each word stays up at least 0.18 s when there is room');
+});
+test('captionsFromWords groups words when asked, breaking on sentence ends and pauses',()=>{
+ const words=[word('one',0,.2),word('two',.2,.4),word('three.',.4,.6),word('four',.6,.8),word('five',1.5,1.7)];
+ assert.deepEqual(captionsFromWords(words,2,{group:3}).map(c=>c.text),['ONE TWO THREE','FOUR','FIVE']);
+});
+test('captionsFromWords never produces overlapping or sub-frame captions',()=>{
+ const words=[word('a',0,.01),word('b',.01,.02),word('c',.02,.5)];
+ const caps=captionsFromWords(words,1);
+ for(let i=0;i<caps.length;i++){assert.ok(Math.round(caps[i].end*30)>Math.round(caps[i].start*30));if(i)assert.ok(caps[i].start>=caps[i-1].end);}
+});

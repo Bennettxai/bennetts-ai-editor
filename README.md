@@ -1,27 +1,28 @@
 # Bennett's AI Editor
 
-**A simple AI-assisted editor for short-form video.** Built for Bennett Legacy students who want to turn a talking-head recording into a clean vertical post with cuts, captions, title cards and a few sound effects.
+**An AI-assisted editor for short-form talking-head video.** Built for Bennett Legacy students. Drop in a recording, and your coding assistant transcribes it, tightens the pauses, adds word-by-word captions and animated split-screen graphics timed to what you say, then renders and checks a finished 1080 × 1920 MP4.
 
-Open this folder in Claude Code or Codex, give it your footage, and describe the edit. The assistant writes an edit plan; Remotion renders it into a 1080 × 1920 MP4.
+Open this folder in Claude Code or Codex, give it your footage, and describe the video you want. Everything runs on your computer. No API keys, no accounts.
 
 ## What you get
 
-- A simple, editable JSON timeline
-- Hard cuts between the parts of your recording you want to keep
-- Phrase captions and basic animated title cards
-- SRT caption import that follows your cuts
-- Per-clip zoom and framing controls
-- Quick 540 × 960 draft renders before the full export
-- Bennett Legacy monochrome styling
-- Seven bundled CC0 sound effects
-- Optional background music you provide, with automatic fade-in/out
-- A synthetic demo to test your setup without filming anything
+- **Local transcription** with word-level timings (whisper.cpp), or import a Whisper/WhisperX JSON you already have
+- **Automatic rough cut** that removes dead air using the real silences in your audio, never cutting a sound it can't account for, and flags filler words, repeats and anything it couldn't transcribe
+- **Word-by-word captions** that pop on with each spoken word and follow your cuts (phrase captions and SRT import still work)
+- **Split-screen motion graphics**: when a graphic is on, your footage slides into the bottom 60 % and a scene plays on top, then slides back
+- **Seven scenes ready to use**: headline, number counter, list/steps, bar chart, quote, screenshot with highlight, and your own custom React scenes
+- **Sync to speech**: every reveal can land on the word that says it (`npm run words` prints the times)
+- **Mastered audio**: every final render is normalised to −14 LUFS with a −1 dBTP ceiling, the level Reels and TikTok expect
+- **Reels safe zone** built into the layout, with a `--guides` overlay for drafts
+- **Automatic review**: size, frame count, loudness, stereo, black/frozen frames and a contact sheet for a sound-off read, plus a critic skill for a second opinion
+- **Craft rules** in [`taste/PRINCIPLES.md`](taste/PRINCIPLES.md) that the assistant follows
+- Bennett Legacy monochrome styling, seven CC0 sound effects, optional music you provide
 
-This is a starter template. It does not automatically transcribe recordings, detect faces, pick B-roll, build custom platform demos, or post to social media.
+It does not post to social media, track faces or generate B-roll. You still review every cut and caption before publishing.
 
 ## Start here
 
-Install **Node.js 22 LTS or newer** and **FFmpeg** (including `ffprobe`). On macOS, `brew install node@22 ffmpeg` is one option; make sure `node`, `npm`, `ffmpeg` and `ffprobe` are available in your terminal. On Windows/Linux, install them using your system's package manager or their official installers.
+Install **Node.js 22 LTS or newer** and **FFmpeg** (including `ffprobe`). On macOS: `brew install node@22 ffmpeg`. For transcription also install whisper.cpp and download one model; see [docs/TRANSCRIBE.md](docs/TRANSCRIBE.md) (about two minutes).
 
 ```bash
 git clone https://github.com/Bennettxai/bennetts-ai-editor.git
@@ -30,61 +31,56 @@ npm ci
 npm run demo
 ```
 
-The demo creates synthetic footage and renders a short video. No API key or personal footage is required. Remotion may download its browser on the first render, so keep an internet connection available for setup.
+The demo renders a short split-screen video from a generated test pattern so you can check your setup without filming anything. Remotion may download its browser on the first render.
 
-To use your own recording:
+## Edit your first video
+
+Open the repo in your coding assistant and say:
+
+> Read AGENTS.md and the edit-video skill. Make a video from /path/to/my-recording.mp4 called my-first-video. Tighten the pauses, add word captions and two or three graphics that land on what I say. Show me the cut and the graphics plan before the final render.
+
+Or run the steps yourself:
 
 ```bash
 npm run init -- my-first-video --input "/absolute/path/to/video.mp4"
-```
-
-Then open the repo in your coding assistant and ask:
-
-> Read AGENTS.md and the edit-video skill. Help me edit my-first-video. Keep it simple: remove the false start, keep my complete sentences, add short captions and two title cards, then show me the edit plan before rendering.
-
-Provide a timestamped transcript or help the assistant review the footage. If it has a transcription tool available, it can use that separately; this repo does not bundle or configure one. It should never invent your spoken words.
-
-If you have an SRT transcript, import it with `npm run captions -- my-first-video --srt "/path/to/transcript.srt"`. This writes a proposal for review; add `--apply` to replace project captions. See the [editing guide](docs/EDITING.md) for details.
-
-After editing `projects/my-first-video/edit.json`:
-
-```bash
+npm run transcribe -- my-first-video        # word timings + silences → transcript.json
+npm run cut -- my-first-video               # proposal + log; add --apply when happy
+npm run words -- my-first-video             # finished-edit time of every word
+# add "visuals" to projects/my-first-video/edit.json (see docs/EDITING.md)
 npm run validate -- my-first-video
-npm run draft -- my-first-video
-npm run render -- my-first-video
+npm run draft -- my-first-video --guides    # fast 540×960 check with the safe zone drawn
+npm run render -- my-first-video            # full 1080×1920, mastered audio
+npm run review -- my-first-video            # measured checks + contact sheet
 ```
 
-The fast draft is written to `output/drafts/my-first-video.mp4`. Your finished video is written to `output/my-first-video.mp4`. Review the whole video with sound before publishing.
+The final video is `output/my-first-video.mp4`; the review is in `output/review/my-first-video/`. Watch the whole thing with sound before posting.
 
 ## How the files fit together
 
 ```text
-.agents/skills/edit-video/   Basic Codex editing instructions
-.claude/skills/edit-video/   Same instructions for Claude Code
-branding/                   Bennett Legacy palette notes
-src/                        Simple Remotion composition
-scripts/                    Project setup, validation and rendering
-projects/<slug>/edit.json    Your edit decisions (created by init)
-public/projects/<slug>/     Your recording (created by init)
-public/sfx/                 Seven sounds and their licenses
-output/                     Finished videos
+.claude/skills/ .agents/skills/   edit-video (the workflow) and review-video (the critic)
+taste/PRINCIPLES.md               craft rules the assistant follows
+branding/                         Bennett Legacy palette notes
+src/                              Remotion composition, scenes and the timing/layout logic
+src/scenes/custom/                your own scenes
+scripts/                          the editor command line and the review tool
+projects/<slug>/                  edit.json, transcript.json, cut and caption proposals
+public/projects/<slug>/           your recording (copied, never changed)
+public/sfx/                       seven sounds and their licenses
+output/                           finished videos, drafts and reviews
 ```
 
-Project names use lowercase letters, numbers and hyphens, such as `my-first-video`. Source media, project data and renders are ignored by Git so they stay out of your public copy by default.
+Your footage, transcripts, projects, models and renders are ignored by Git, so they stay out of your public copy.
 
-## Editing basics
+## Two clocks
 
-`clips` use timestamps from the **original recording**. Captions, cards and sounds use timestamps from the **finished edit**. If you shorten a cut, move everything that follows on the finished timeline.
+`clips` use times from the **original recording**. Captions, cards, visuals and sounds use times from the **finished edit**. `npm run words` prints the finished-edit time of every word, so graphics can land on the words they illustrate. After changing cuts, run it again and re-time anything that follows.
 
-For example, keeping original seconds 2–6 and 10–14 produces an eight-second video. A caption for original second 11 belongs at finished second 5.
-
-Keep captions short, avoid covering your face, and use sound effects sparingly. Background music is optional and is not included. Choose music you have permission to use, then place it inside `public/` and reference it with a public-relative path.
-
-See [the editing guide](docs/EDITING.md) for the JSON format and a sample assistant prompt.
+See [the editing guide](docs/EDITING.md) for the full JSON format, every scene and its options, and tips.
 
 ## Customize it
 
-The default branding is Bennett Legacy: off-white text, dark backgrounds and simple motion. See [branding](branding/README.md). Change the label, colors and composition for your own style.
+Colours and fonts live in `src/scenes/kit.tsx` (`tokens`, `fonts`) and the default branding is Bennett Legacy: off-white type on near-black. See [branding](branding/README.md). Add your own scenes in `src/scenes/custom/index.tsx`.
 
 ## Check the installation
 
@@ -93,8 +89,8 @@ npm test
 npm run typecheck
 ```
 
-If rendering fails, verify `ffmpeg -version` and `ffprobe -version`, run `npm ci`, and confirm your media file exists. Run commands from the repository root. Large recordings and 1080p rendering can take time; start with the short demo.
+If rendering fails, check `ffmpeg -version` and `ffprobe -version`, run `npm ci`, and confirm your media file exists. Run commands from the repository root.
 
 ## Licenses
 
-Starter code: [MIT](LICENSE). Sound effects: [CC0 with sources included](public/sfx/README.md). Remotion has separate licensing terms; see [third-party notices](THIRD_PARTY_NOTICES.md) before commercial/team use.
+Starter code: [MIT](LICENSE). Sound effects: [CC0 with sources included](public/sfx/README.md). whisper.cpp and its models are separate downloads under their own licenses (MIT). Remotion has separate licensing terms; see [third-party notices](THIRD_PARTY_NOTICES.md) before commercial/team use.

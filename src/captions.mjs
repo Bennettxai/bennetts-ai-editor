@@ -37,3 +37,51 @@ export function mapCaptions(cues,clips){
  }
  return result;
 }
+
+// --- Word captions from a word-level transcript ---
+// Keep a word when its onset survives the cut; clamp its end to the clip.
+export function mapWords(words,clips){
+ const out=[];let offset=0;
+ for(const clip of clips){
+  const a=frame(clip.start),b=frame(clip.end);
+  for(const w of words){
+   const s=frame(w.start);
+   if(s>=a&&s<b)out.push({text:w.text,start:(offset+s-a)/FPS,end:(offset+Math.min(Math.max(frame(w.end),s+1),b)-a)/FPS});
+  }
+  offset+=b-a;
+ }
+ return out;
+}
+const display=text=>text.toUpperCase().replace(/[^\p{L}\p{N}'’\- ]/gu,'').replace(/^['’\-]+|['’\-]+$/g,'').trim();
+// One word at a time (group 1) by default: it pops on at its onset, runs into the next word during
+// speech, stays up at least minDwell, and the screen goes blank in pauses longer than maxPause.
+export function captionsFromWords(words,totalSeconds,{group=1,minDwell=0.18,maxPause=0.18}={}){
+ const pages=[];let page=[];
+ words.forEach((w,i)=>{
+  if(!display(w.text))return;
+  page.push(w);
+  const next=words[i+1];
+  if(page.length>=group||/[.!?]["”']?$/.test(w.text)||!next||next.start-w.end>maxPause){pages.push(page);page=[];}
+ });
+ if(page.length)pages.push(page);
+ const caps=[];
+ pages.forEach((p,i)=>{
+  const next=pages[i+1]?.[0];
+  const start=p[0].start,spoken=p.at(-1).end;
+  let end=next&&next.start-spoken<=maxPause?next.start:spoken;
+  end=Math.min(Math.max(end,start+minDwell),next?next.start:totalSeconds,totalSeconds);
+  caps.push({start,end,text:p.map(x=>display(x.text)).join(' ')});
+ });
+ // Keep every caption at least one frame long and never overlapping its neighbour.
+ const out=[];
+ for(const c of caps){
+  const prev=out.at(-1);
+  const start=prev?Math.max(c.start,prev.end):c.start;
+  if(frame(c.end)<=frame(start)){
+   if(prev){prev.text=`${prev.text} ${c.text}`.slice(0,100);prev.end=Math.max(prev.end,c.end);continue;}
+   out.push({start,end:Math.min(totalSeconds,start+1/FPS),text:c.text});continue;
+  }
+  out.push({start,end:c.end,text:c.text});
+ }
+ return out;
+}

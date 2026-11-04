@@ -1,15 +1,15 @@
 # Bennett's AI Editor
 
-This is a simple student editor. Read README.md, docs/EDITING.md and .agents/skills/edit-video/SKILL.md before editing a recording.
+An AI-assisted editor for short-form talking-head video. Read README.md, docs/EDITING.md, taste/PRINCIPLES.md and .agents/skills/edit-video/SKILL.md before editing a recording. After every full render, review it with .agents/skills/review-video/SKILL.md, using a fresh reviewer that didn't build the video.
 
-Use the existing JSON timeline and renderer. Keep the workflow small: choose cuts, add short captions and a few title cards, optionally place sound effects, validate, render, review.
+Workflow: init → transcribe → cut (show the plan, get approval, apply) → word captions → plan graphics from `npm run words` (show the plan, get approval) → visuals in edit.json → validate → draft with --guides → review → render → review + critic → deliver the MP4.
 
-Never guess dialogue or claim you listened to media you have not reviewed. Ask for a transcript when one is unavailable. Show the cut plan before rendering changes to speech. Do not overwrite source footage or remove complete words to make a cut shorter.
+Never guess dialogue or claim you listened to media you haven't reviewed. If transcription isn't available, ask for a transcript. Show the cut plan before applying cuts to speech. Don't overwrite source footage or remove complete words to make a cut shorter. Put nothing on screen that the speaker doesn't say or the user doesn't supply.
 
-All clip timestamps use the source recording; all overlay/audio-cue timestamps use the final edit. Recheck overlay timings after changing cuts. Only reference files inside public/ using public-relative paths. Do not put credentials into files. Do not commit student media, project transcripts or outputs.
+All clip timestamps use the source recording; all captions, cards, visuals and sfx use the finished edit. After changing cuts, rerun `npm run words` and re-time everything that follows. Only reference files inside public/ with public-relative paths. Don't put credentials in files. Don't commit student media, project files, transcripts, models or outputs.
 
-Keep additions in the starter's existing style. Run npm test and npm run typecheck for code changes. Validate the project's edit.json before rendering, then inspect the exported video and report any checks you could not perform.
+Keep additions in the starter's existing style. For code changes, write the failing test first, then run `npm test` and `npm run typecheck`. Validate edit.json before rendering, inspect the exported video and the review report, and report any checks you couldn't perform.
 
 No social posting is configured. Deliver a local MP4 for the student to review and upload.
 
-For source-timed SRT, use the captions command to create a proposal before applying it. Re-import after cut revisions and check partially retained phrases manually. Use per-clip zoom/focus for basic framing and draft renders for review; never describe these controls as automatic face tracking or word alignment.
+The cut tool proposes; a person decides. It never cuts sound it has no transcript for, and it doesn't choose between takes. Per-clip zoom/focus is manual framing, not face tracking.

@@ -1,0 +1,22 @@
+{
+  "title": "Bennett’s AI Editor demo",
+  "clips": [{"start": 0, "end": 2.5}, {"start": 3, "end": 7}],
+  "captionStyle": "word",
+  "captions": [
+    {"start": 1.2, "end": 1.6, "text": "SETUP"},
+    {"start": 1.6, "end": 2.2, "text": "CHECK"},
+    {"start": 3.3, "end": 3.8, "text": "TRANSCRIBE"},
+    {"start": 3.9, "end": 4.4, "text": "CUT"},
+    {"start": 4.5, "end": 5.2, "text": "ANIMATE"}
+  ],
+  "cards": [{"start": 0, "end": 1.1, "text": "One idea. One clean edit."}],
+  "visuals": [
+    {"scene": "number", "start": 1.2, "end": 3.0, "value": 3, "suffix": " steps", "label": "test pattern, not a real talk", "kicker": "Setup check"},
+    {"scene": "list", "start": 3.2, "end": 6.5, "title": "What v2 does", "items": ["Transcribe", "Cut the pauses", "Animate the point"], "at": [3.3, 3.9, 4.5]}
+  ],
+  "sfx": [
+    {"src": "sfx/pop.ogg", "start": 3.3, "volume": 0.18},
+    {"src": "sfx/click.ogg", "start": 3.9, "volume": 0.18},
+    {"src": "sfx/click.ogg", "start": 4.5, "volume": 0.18}
+  ]
+}

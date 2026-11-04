@@ -1,18 +1,23 @@
 {
   "name": "bennetts-ai-editor",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "init": "node scripts/editor.mjs init",
+    "transcribe": "node scripts/editor.mjs transcribe",
+    "cut": "node scripts/editor.mjs cut",
+    "captions": "node scripts/editor.mjs captions",
+    "words": "node scripts/editor.mjs words",
     "validate": "node scripts/editor.mjs validate",
+    "draft": "node scripts/editor.mjs draft",
     "render": "node scripts/editor.mjs render",
+    "review": "node scripts/editor.mjs review",
     "demo": "node scripts/editor.mjs demo",
     "studio": "remotion studio src/index.ts",
     "test": "node --test tests/*.test.mjs",
     "typecheck": "tsc --noEmit",
-    "captions": "node scripts/editor.mjs captions",
-    "draft": "node scripts/editor.mjs draft"
+    "smoke": "node tests/render-smoke.mjs"
   },
   "dependencies": {
     "@remotion/cli": "4.0.536",
