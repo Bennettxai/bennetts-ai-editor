@@ -22,13 +22,14 @@ test('real native-rate drafts and 4K finals retain exact rational fps, frame cou
   editor('init','native','--input',input);
   const editFile=path.join(dir,'projects/native/edit.json'),edit=JSON.parse(fs.readFileSync(editFile,'utf8'));
   edit.captionStyle='word';edit.captions=[{start:0,end:.5,text:'NATIVE'},{start:.5,end:1.001,text:'TIMING'}];
-  edit.visuals=[{scene:'number',start:0,end:1.001,value:30,at:[.5]}];
+  edit.visuals=[{scene:'number',start:0,end:1.001,value:30,at:[0]}];
   fs.writeFileSync(editFile,JSON.stringify(edit));
   editor('draft','native');
   const draft=probe('output/drafts/native.mp4'),dv=draft.streams.find(s=>s.codec_type==='video');
   assert.equal(dv.width,540);assert.equal(dv.height,960);assert.equal(dv.r_frame_rate,'30000/1001');assert.equal(dv.nb_frames,'30');
   editor('review','native','--draft');
   const draftReview=JSON.parse(fs.readFileSync(path.join(dir,'output/review/native-draft/report.json'),'utf8'));
+  assert.deepEqual(draftReview.warnings,[]);
   for(const name of ['size','fps','frames'])assert.equal(draftReview.checks.find(c=>c.name===name).pass,true,name);
   editor('render','native','--no-master');
   const before=run('ffmpeg',['-v','error','-i','output/native.mp4','-map','0:v:0','-c','copy','-f','md5','-']).stdout;
@@ -42,6 +43,7 @@ test('real native-rate drafts and 4K finals retain exact rational fps, frame cou
   assert.equal(Math.round(roundTrip.clips[0].end*(30000/1001)),30,'reimport retains last frame despite mux duration rounding');
   editor('review','native');
   const review=JSON.parse(fs.readFileSync(path.join(dir,'output/review/native/report.json'),'utf8'));
+  assert.deepEqual(review.warnings,[]);
   for(const name of ['size','fps','frames','loudness','true peak'])assert.equal(review.checks.find(c=>c.name===name).pass,true,name);
  }finally{if(!process.env.EDITOR_MEDIA_EVIDENCE_DIR)fs.rmSync(dir,{recursive:true,force:true});}
 });

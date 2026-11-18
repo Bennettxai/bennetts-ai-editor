@@ -102,7 +102,11 @@ function init(slug,input,options={}){
  const metadata=probeSource(path.resolve(input));
  const format={fps:options.fps??metadata.video.fpsRatio,resolution:options.resolution??'4k'};
  const selected=getFormat({format});format.fps=selected.fpsRatio;
- if(metadata.video.variableFrameRate)throw new Error(`Variable-frame-rate input cannot be edited as native-frame-exact. Preserve the original and create an explicit CFR working copy locally, then import that copy:\n${cfrInstruction(path.resolve(input),selected.fpsRatio)}`);
+ const offsetVideo=Math.abs(metadata.video.startTime)>0.000001||Math.abs(metadata.video.firstFrameTime)>0.000001;
+ if(metadata.video.variableFrameRate||offsetVideo){
+  const reason=[offsetVideo?'Nonzero video timestamp origin is unsupported; importing it would truncate or misalign the source.':null,metadata.video.variableFrameRate?'Variable-frame-rate input cannot be edited as native-frame-exact.':null].filter(Boolean).join(' ');
+  throw new Error(`${reason} Preserve the original and explicitly create a zero-origin CFR working copy locally, then import that copy. This command shifts all tracks together, fills an initial picture gap with the first frame, and pads initial audio silence to preserve their relative timing:\n${cfrInstruction(path.resolve(input),selected.fpsRatio,metadata)}`);
+ }
  const duration=metadata.video.duration;
  const ext=path.extname(input).toLowerCase();if(!['.mp4','.mov','.m4v','.webm'].includes(ext))throw new Error('Use MP4, MOV, M4V or WebM input.');
  const source=`projects/${slug}/input${ext}`;
