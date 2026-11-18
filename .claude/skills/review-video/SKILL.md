@@ -1,38 +1,29 @@
 ---
 name: review-video
-description: Critique a rendered video from this repository as a fresh reviewer that did not build it - measure it against taste/PRINCIPLES.md and return ranked problems ending in "ship" or "one more pass". Use after every full render, or when the user asks whether a video is ready.
+description: Use after a full render, after replacing a rendered file, or when judging whether an AI Video Editor project is ready for delivery.
 ---
 
 # Review a video
 
-The builder never judges its own work. If you edited this video in this conversation, **spawn a fresh subagent** with this skill and only the project slug. Don't pass on your opinion of the video. If you are that subagent, continue.
+Use a fresh reviewer who did not build the edit, when available. Give that reviewer the project slug and this skill, without the builder's verdict. If independent review is unavailable, disclose that limit. Never infer playback from a transcript, waveform or technical pass.
 
-## Gather evidence yourself
+Read [DIALOGUE.md](../../../docs/DIALOGUE.md) for evidence schemas and [RECOVERY.md](../../../docs/RECOVERY.md) for stale artifacts. Read `taste/PRINCIPLES.md`, `projects/<slug>/edit.json`, the take/gap ledgers and current revision manifest/output transcript. An initial dialogue `technical:pass` validates revision structure; it does not measure export quality.
 
-1. Read `taste/PRINCIPLES.md` and `projects/<slug>/edit.json`.
-2. `npm run review -- <slug>` (or `--draft`) and read `output/review/<slug>/report.md`. Any failed check is automatically a top problem.
-3. Look at `output/review/<slug>/contact.jpg` (2 frames per second, 8 per row, red box = safe zone). Read it with the sound off: does each panel make sense on its own?
-4. Pull frames around every visual: its start, its start + 0.3 s, each `at` time, and 0.2 s before its end:
-   `ffmpeg -v error -ss <t> -i output/<slug>.mp4 -frames:v 1 -vf scale=540:960 /tmp/<slug>-<t>.png`
-5. `npm run words -- <slug>` and compare each `at` reveal with the time of the word it illustrates: off by more than 1 frame (0.033 s) is a problem.
-6. Check `transcript.json` against the captions for misheard words.
+## Gather current evidence
 
-## Judge against the principles
+1. Run `npm run status -- <slug>` and `npm run dialogue -- <slug>`. Preserve stale evidence and follow recovery before review. Missing human evidence stays pending. Legacy projects lack structured gates; say so.
+2. Run `npm run review -- <slug>` (or `--draft`). Read `output/review/<slug>/report.json`, `report.md` and `contact.jpg`; draft reports use `<slug>-draft`. A current report can contain failed checks. Rank any failed measurement as a problem.
+3. Inspect the contact sheet and frames at each visual's start, start + 0.3 s, reveal times and end − 0.2 s. Example: `ffmpeg -v error -ss <seconds> -i output/<slug>.mp4 -frames:v 1 -vf scale=540:960 /tmp/review-frame.png`.
+4. Run `npm run words -- <slug>`. Compare reveals with the intended word within one **selected output frame** (`1/fps`, not a fixed 0.033 s). Check caption text/order and source-to-output joins. Inspect all take/gap ledger decisions, including tiny gaps and untranscribed noises; a clean transcript alone is insufficient.
+5. With playback, hear the entire current export at normal speed, checking whole phonemes, accidental double words, all joins, final speech tail and voice/music/SFX balance. Without playback, state “I have not listened to this export” and keep listening pending.
 
-For each visual and the video as a whole:
+Judge readability, useful visual meaning, timing/hold, safe-zone/face/caption collisions, motion and supported claims. Record technical measurements separately from semantic/acoustic judgments. Use `dialogue --review <json>` only for gates actually reviewed, with revision/reviewer/time/evidence; listening pass/fail must identify the heard file and SHA256 with a current render receipt. Keep missing checks pending; software cannot prove the attestation.
 
-- **Reads with the sound off?** One idea, 3–6 words, readable at phone size?
-- **Timing:** lands on its word, holds at least 1 s, hook (first 3 s) not given away?
-- **Layout:** inside the safe zone, nothing colliding with captions or the speaker's face, consistent alignment?
-- **Motion:** eased, no stutter or bounce, no repeated layout back to back, nothing frozen?
-- **Truth:** every number and claim on screen is said in the transcript or supplied by the user?
-- **Cuts:** any join that lands mid-word or leaves a double word in the captions?
-- **Audio:** report the measured numbers. If you can't listen, say so and leave the listening pass to the user.
+## Return this report
 
-## Report
+- Exact export/revision inspected; technical measurements and their failed checks.
+- Take selection, cut coverage, listening, visual inspection and independent-review status, each with evidence or an explicit limitation.
+- At most eight ranked defects: output/source time, observed problem, frame/measurement/playback evidence and concrete fix.
+- Verdict: `ship` only when the current final has passed required technical, take, coverage, listening and visual reviews; otherwise `one more pass` with remaining work.
 
-Return a ranked list, worst first. For each problem give the time, what's wrong, the evidence (frame path or measurement) and the specific fix in `edit.json` terms. Keep it to what matters: at most 8 items.
-
-End with exactly one line: `ship` or `one more pass`.
-
-The builder fixes the top items, re-renders and asks a **new** critic. Stop after 3 rounds and hand the remaining list to the user.
+A rerender can change the file or receipt while retaining its name/revision. Old listening becomes effectively pending and the old measured report stale; inspect status, rerun review and listen to the replacement. A draft's listening evidence does not approve the final mix. After three critique rounds, hand unresolved items to the user rather than concealing them.

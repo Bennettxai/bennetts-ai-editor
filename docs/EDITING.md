@@ -1,171 +1,88 @@
-# Your first edit
+# Editing guide
 
-Initialize a project before writing the timeline:
+Run commands from the repository root. Start with the [README walkthrough](../README.md), then use [DIALOGUE.md](DIALOGUE.md) before editing speech and [RECOVERY.md](RECOVERY.md) for revisions. All JSON examples illustrate structure; use real reviewed speech, facts and timing for your own recording.
+
+## Initialize and choose a format
 
 ```bash
-npm run init -- first-post --input "/path/to/your-recording.mp4"
+npm run doctor
+npm run init -- first-post --input "/path/to/recording.mp4"
+# Alternative explicit output choices, using a new project name:
+npm run init -- first-post-1080 --input "/path/to/recording.mp4" --resolution 1080p --fps 30000/1001
 ```
 
-This copies your recording into `public/projects/first-post/` and creates `projects/first-post/edit.json`. It never edits the original file. Existing project names are rejected; use a new name for another edit.
+Import copies the file to `public/projects/<slug>/input.<extension>` without changing the original, and writes `projects/<slug>/edit.json` plus `source.probe.json`. Existing names are rejected. Supported containers are MP4, MOV, M4V and WebM; actual codecs must be decodable by the installed tools. New projects default to `format: {"fps":"<source rational>","resolution":"4k"}`. Missing `format` in an old edit retains 30/1 and 1080p. Do not remove format metadata when modifying a generated edit.
 
-## Timeline example
+### Format and source limits
 
-Replace the generated timeline with your own decisions. This example needs an original recording at least 14 seconds long:
+- Final resolution is 2160 × 3840 (`4k`) or 1080 × 1920 (`1080p`). Graphics use a logical 1080 × 1920 canvas, rendered by the supported CLI at scale 2 for 4K. Drafts always use 540 × 960. Studio shows the logical canvas; raw Remotion invocations must set the appropriate scale themselves.
+- `--fps` accepts exact integer/rational values from 1–120, including `24000/1001`, `30000/1001` and `60000/1001`. Decimal `29.97` is rejected; `2997/100` is a different exact rate from `30000/1001`. An override changes the output timeline rate, while the source probe preserves native fps separately.
+- Import reads every decoded frame timestamp to check cadence. This can be slow for long footage and has a 64 MiB probe-output limit. It does not infer CFR solely from nominal/average fps.
+- VFR or nonzero video timestamp origins are refused before project directories are created. The error prints a shell-quoted FFmpeg command for a distinct `.working-cfr.mp4`, with `-n` to avoid overwrites. Run it only as an explicit normalization decision. It shifts tracks together, fills an initial picture gap with the first frame, and pads initial audio silence to preserve relative timing. Review sync and the added lead-in before editing.
+- Preserve the original file. After making a working copy, keep `projects/<slug>/source-provenance.md` with original/working-copy paths and SHA256 hashes, the exact executed command, reasons, and sync review. The imported copy becomes this project's source; `source.probe.json` has `normalization:null` and does **not** reconstruct pre-import history. Do not claim an automatic mapping to original VFR frame indexes.
+- Footage is read directly from the selected source for final rendering; no 1080 intermediate is made. Final H.264 uses CRF 10. Cropping or enlarging a smaller source still loses apparent detail; 4K output does not invent detail.
+
+## The two clocks
+
+`clips` use source seconds; captions, cards, visuals, reveals and SFX use **edited output seconds**. Music begins on the output timeline. Shared timing uses the selected fps. Reviewed clip boundaries must lie on integer frames; they are not arbitrary rounded decimal seconds. The manifest labels source-time indexes at output fps explicitly; native source fps is recorded separately.
+
+After the approved cut:
+
+```bash
+npm run words -- first-post
+```
+
+This prints the mapped word times and writes `projects/first-post/words.output.json`. Use these times for reveals and cues. When cuts/transcript change, follow the snapshot/plan recovery workflow and rebuild timing even if old numbers still fit within the video. `--clear-overlays` archives and clears cards/visuals/SFX affected by a cut or transcript revision. It does not automatically retime their meaning.
+
+## Timeline fields
+
+Retain generated `source` and `format`. At 30fps, a reviewed eight-second timeline could contain:
 
 ```json
 {
   "title": "One idea, clearly explained",
   "source": "projects/first-post/input.mp4",
-  "clips": [
-    {"start": 2, "end": 6},
-    {"start": 10, "end": 14}
-  ],
-  "captions": [
-    {"start": 0.2, "end": 2.4, "text": "Your first spoken phrase"},
-    {"start": 4.2, "end": 6.8, "text": "Your next spoken phrase"}
-  ],
-  "cards": [
-    {"start": 0, "end": 1.5, "text": "ONE SIMPLE IDEA"}
-  ],
-  "sfx": [
-    {"src": "sfx/pop.ogg", "start": 0, "volume": 0.18},
-    {"src": "sfx/whoosh-1.wav", "start": 4, "volume": 0.12}
-  ]
+  "format": {"fps": "30/1", "resolution": "4k"},
+  "clips": [{"start": 2, "end": 6}, {"start": 10, "end": 14}],
+  "captionStyle": "word",
+  "captions": [{"start": 0.2, "end": 0.6, "text": "Example"}],
+  "cards": [],
+  "visuals": [],
+  "sfx": []
 }
 ```
 
-The captions above are placeholders, not a transcript. Replace them with what you actually say, at the times you actually say it. Remove an overlay instead of inventing speech to fill it.
+This requires at least 14 source seconds and actual speech matching the selected ranges. Use the saved-plan workflow for reviewed speech cuts. For deliberate manual clip changes in an existing revision, adopt with `dialogue --snapshot` as documented in RECOVERY.md before downstream commands.
 
-### Two clocks
+Clips must be positive, chronological and non-overlapping. A card covers the footage while speech continues; captions can appear above it. `title` is project metadata, not an automatic title overlay. Captions allow up to 100 characters, cards 120; ranges within each collection cannot overlap and must fit the output.
 
-- **clips**: source-recording seconds. The example keeps 2–6 and 10–14 from the original file.
-- **captions/cards/sfx/music**: the finished edit. The example output lasts eight seconds; the second clip begins at output second 4.
-- Times are rounded to the 30fps frame grid for rendering. Keep cut boundaries clear of spoken syllables and check the exported result.
-- Clips must be positive-length, chronological and non-overlapping. Overlay ranges must fit the final video. Keep text short enough to read comfortably. Captions are limited to 100 characters and cards to 120; ranges within either collection cannot overlap.
-- Word-by-word captions come from `npm run captions -- <slug> --words` (see below); hand-written captions are phrase-level.
-
-The `title` is project metadata. Put visible titles in `cards`. Cards cover the footage while the underlying speech keeps playing; captions appear above cards if they share a time range.
-
-## Add your own music
-
-Copy a licensed track to `public/music/background.mp3` and add this top-level field:
+Optional per-clip framing:
 
 ```json
-"music": {"src": "music/background.mp3", "volume": 0.18}
+{"start":10,"end":14,"zoom":1.1,"focusX":50,"focusY":20}
 ```
 
-Use a public-relative path, without `public/` at the beginning. A volume value is a linear multiplier, not decibels; the default 0.18 usually sits around 10 dB under a voice, which is where music belongs: felt, not followed. If the track still fights the voice, pick a calmer track rather than turning it down until it vanishes. Music starts with the edit and loops if it is shorter than the video. It fades in and out over half a second at each boundary; it does not duck under speech. No song or license for a song is included.
+`zoom` is 1–1.5, `focusX`/`focusY` are 0–100 (defaults 1, 50, 0). This is manual crop placement, not face tracking. Framing is part of cut-plan identity, so changing it after plan review requires reconciliation before application.
 
-## Work with your assistant
+## Transcription and captions
 
-> Edit first-post using the existing starter. Here is my timestamped transcript: [paste it]. Keep these two complete thoughts: [describe them]. Propose the source-time cuts first. After I approve, update edit.json, add short phrase captions, use at most two title cards and three quiet sound effects, validate and render. Do not invent dialogue or add unsupported claims.
-
-If your assistant can transcribe your local video, it may use its own transcription tool. Review that transcript before using it for captions. The starter itself does not require a transcription service or an API key.
-
-## Validate, render, review
+Use [TRANSCRIBE.md](TRANSCRIBE.md) for local ASR or timed JSON import; source-clock words must be reviewed against the recording. Applying a cut rebuilds word captions. To regenerate/review a grouping:
 
 ```bash
-npm run validate -- first-post
-npm run render -- first-post
+npm run captions -- first-post --words --group 2
+npm run captions -- first-post --words --group 2 --apply
 ```
 
-Open `output/first-post.mp4`. Check the beginning and end of every cut, caption spelling, face framing, and music/SFX balance. Check the entire video with headphones or speakers before posting. Rendering again replaces that project's output MP4, so copy a version you want to keep first.
+Groups support 1–5 words. Caption proposals are saved to `captions.proposed.json`; `--apply` regenerates that caption proposal and applies it. This differs from `cut --apply`, which reads an existing exact saved plan. Word captions switch with speech, use a minimum dwell target of 0.18 seconds where possible, and clear during longer gaps. Their position follows full-screen versus split-screen layout.
 
-The default layout is designed for a single speaker. Horizontal footage is cropped to fill the vertical video region. Use the framing controls below to position the speaker; this is manual framing, not face tracking.
-
-## Demo and privacy
-
-`npm run demo` generates a short color-pattern recording with a quiet test tone, then adds a card, captions and two sound cues. It is a setup check, not an example of a completed talking-head edit. If the demo already exists, use `npm run render -- demo` to render it again.
-
-Personal media and project files stay local and are ignored by Git. Keep footage under `public/projects/<slug>/` and music under `public/music/` so that protection applies automatically. Files you place elsewhere under `public/` can be committed unless you add them to `.gitignore`.
-
-
-## Import captions from SRT
-
-Use an SRT transcript timed to the **original recording**, not a previously edited export:
+For phrase captions, set `"captionStyle":"phrase"` in `edit.json`, then import SRT timed to the **source recording**. The importer preserves the existing caption style:
 
 ```bash
-npm run captions -- first-post --srt "/path/to/transcript.srt"
+npm run captions -- first-post --srt "/path/to/source.srt"
+npm run captions -- first-post --srt "/path/to/source.srt" --apply
 ```
 
-The importer drops cues in removed sections and maps the remaining cues to the final timeline. It writes `projects/first-post/captions.proposed.json` for review and leaves your edit unchanged. Once reviewed:
-
-```bash
-npm run captions -- first-post --srt "/path/to/transcript.srt" --apply
-```
-
-This replaces the caption list in `edit.json`; keep a copy if you want to preserve hand-edited captions. The tool does not transcribe audio. Export SRT from a transcription service/editor you already use and check the text yourself.
-
-A cue crossing a cut is shortened or split, retaining its full phrase in each kept fragment. SRT has phrase timing, not exact word timing: review split phrases, especially around cuts that remove spoken words. Overlapping, malformed or overly long cues are rejected rather than silently merged. Keep cues under 100 characters.
-
-After changing cuts, re-import captions from the original SRT. Existing title cards and SFX still need their output times checked manually.
-
-## Set zoom and framing
-
-Each clip accepts optional `zoom`, `focusX` and `focusY` fields:
-
-```json
-{"start": 10, "end": 14, "zoom": 1.15, "focusX": 50, "focusY": 20}
-```
-
-`zoom` ranges from 1 to 1.5 (default 1). `focusX` and `focusY` range from 0 to 100 and control the crop position and zoom origin. Defaults are 50 and 0: centered horizontally, aligned to the top. Values describe placement within the available crop, not detected face coordinates. A modest static punch-in on the next clip can emphasize a new thought. Avoid zooming so far that you cut off your head.
-
-## Render a fast draft
-
-```bash
-npm run draft -- first-post
-```
-
-This exports `output/drafts/first-post.mp4` at 540 × 960 using the same timing and framing. Use it for cut and caption review, then `npm run render -- first-post` for the full 1080 × 1920 export. Each command replaces only its corresponding output file.
-
-
-# v2: the full workflow
-
-```text
-init → transcribe → cut (review the log, then --apply) → words → visuals → validate → draft --guides → render → review
-```
-
-## Transcribe
-
-`npm run transcribe -- <slug>` writes `projects/<slug>/transcript.json`: every word with source-clock times, plus the silences measured in your audio. Setup and import options: [TRANSCRIBE.md](TRANSCRIBE.md). Fix misheard words in the file's `text` fields; keep the times.
-
-## Cut the dead air
-
-```bash
-npm run cut -- <slug>                     # proposal only
-npm run cut -- <slug> --max-pause 0.25    # tighter
-npm run cut -- <slug> --remove-fillers    # also cut um/uh
-npm run cut -- <slug> --apply             # write the clips into edit.json
-```
-
-The proposal only cuts where the audio is actually quiet. Each pause longer than `--max-pause` (default 0.35 s) is tightened to 0.25 s: 0.15 s is kept after the last word so consonant tails and breaths finish, and 0.1 s before the next word so its attack is not clipped. The lead-in and trailing silence are trimmed.
-
-Every decision is logged in `projects/<slug>/cuts.proposed.json` with a reason (`CUT` or `KEEP`). It also flags things only a person can judge:
-
-- **filler**: um, uh. Kept unless you pass `--remove-fillers`.
-- **repeat**: the same word twice in a row, usually a restart. Keep it only if it was deliberate.
-- **unworded**: sound the transcript has no words for: a missed word, a breath, a noise. Always kept. Listen to it.
-- **moved**: the recogniser placed a word inside a pause that is being cut, and its time was corrected onto the speech next to it. Usually that's right, because recognisers drift. Listen to make sure no quiet word is being cut.
-
-The tool doesn't pick between takes. If you said a line twice, choose the better take and remove the other one by editing `clips` yourself. Listen to every join before you approve.
-
-`--apply` cuts **inside the clips you already have**: takes you removed by hand stay removed, and each piece keeps its clip's zoom and focus. It then rebuilds word captions. It refuses to run if cards, visuals or sounds would end up past the new end of the video (re-time them first), or if the project has phrase captions (add `--replace-captions` to switch to word captions). Anything that survives still needs checking, because every output time after a cut moves.
-
-Silence is measured against your recording's own noise floor, so a quiet room and a noisy one both work. If nothing gets cut, the room noise is probably too close to your voice; check `silenceThreshold` in `transcript.json`.
-
-## Word captions
-
-```bash
-npm run captions -- <slug> --words              # one word at a time (proposal)
-npm run captions -- <slug> --words --group 3    # up to 3 words a page
-npm run captions -- <slug> --words --apply
-```
-
-Word captions pop on at each word's onset in bold caps and switch instantly to the next word during speech. Each stays up at least 0.18 s, and the screen goes blank in pauses longer than 0.18 s. There are no fades: if a caption looks late, fix the word's time rather than adding animation. With `"captionStyle": "word"` they sit in the lower middle of the frame when the footage is full screen, and on the seam when a graphic is up.
-
-## Find the time of any word
-
-`npm run words -- <slug>` prints the finished-edit time of every word and saves `words.output.json`. Use these times for `visuals`, their `at` reveal times, and `sfx`, so graphics land on the word that says them.
+Cues in removed sections drop out; crossing cues shorten/split while retaining their phrase in each fragment. Inspect those joins: SRT is not word alignment. Keep a copy of hand-edited captions before replacing them. A later dialogue apply/snapshot with existing phrase captions requires explicit `--replace-captions` to rebuild word captions. Any caption/edit change makes prior render receipts stale; rerender/review.
 
 ## Split-screen visuals
 
@@ -193,25 +110,47 @@ Add a `visuals` list. While a visual is on, the footage slides into the bottom p
 
 Put screenshots under `public/projects/<slug>/` so they stay out of Git. `npm run validate` checks every field and prints craft warnings (too many words, a reveal held under 1 s, the same scene twice in a row, a sound in the first 3 s) without blocking the render.
 
-## Custom scenes
+## Custom scenes and native-rate timing
 
-Write a React component in `src/scenes/custom/index.tsx` that takes `SceneProps` (`visual`, `stage`, `durationInFrames`), wrap it in `SceneFrame` and register it in `customScenes`. Then use `{"scene":"custom","component":"YourName","props":{…}}`. Compute everything from `useCurrentFrame()`: no timers, CSS transitions or `Math.random()`, or renders will flicker. Stay inside `stage` (the safe area of the top zone) and use `tokens`/`fonts` from `kit.tsx`. Preview with `npm run studio`.
+A custom component in `src/scenes/custom/index.tsx` takes `SceneProps` (`visual`, `stage`, `durationInFrames`), uses `SceneFrame`, and is registered in `customScenes`. The included `ProgressExample` is a working example. To use it, add this object to `visuals` at a valid reviewed output range:
 
-## Safe zone
-
-Instagram crops the feed preview to 4:5 and puts buttons over the edges, so everything that matters stays inside x 60–950, y 290–1630 of the 1080 × 1920 frame. Scenes are laid out inside it automatically. `npm run draft -- <slug> --guides` draws it (red) and the split seam (blue) on the draft so you can check captions and custom scenes.
-
-## Render and master
-
-`npm run render` exports the full video and then masters the audio in two passes: it measures the mix, then applies one static gain correction to −14 LUFS integrated with a −1 dBTP ceiling. A static correction doesn't pump the way a live compressor does. Use `--no-master` to skip it. Drafts are not mastered.
-
-## Review
-
-```bash
-npm run review -- <slug>          # the final render
-npm run review -- <slug> --draft  # the draft
+```json
+{"scene":"custom","component":"ProgressExample","start":3,"end":5,"props":{"percent":75,"label":"Progress"}}
 ```
 
-The review writes `output/review/<slug>/report.md` and `contact.jpg`. It checks size, fps and frame count against the edit, loudness and true peak, that both stereo channels carry sound, that frame 1 isn't black, and that nothing freezes for more than 1 s per 30 s. The contact sheet shows 2 frames per second, 8 per row, with the safe zone in red. Read it with the sound off: each panel should make sense on its own.
+Use `useTiming()` from `src/scenes/kit.tsx`. Its `frame` is the current project frame; `m(12)` converts a duration authored as 12 frames at 30fps to the current rate. `relative(visual, seconds)` maps an output time into this scene, and `reveal(visual, index)` uses its `at` values. Pure `relFrame`/`revealAt` helpers also accept fps; their omitted-fps default is legacy 30. Existing custom code hard-coding 30fps is not automatically repaired.
 
-The numbers can't judge taste. Ask your assistant to run the **review-video** skill: a fresh reviewer that didn't build the video measures it against `taste/PRINCIPLES.md` and ends with `ship` or `one more pass`.
+Compute animation from frames, with no timers, CSS transitions or `Math.random()`. Stay within `stage`, use shared `tokens`/`fonts`, and run `npm run typecheck`. Preview with `npm run studio`. The preserved internal composition ID is `BennettsEditor` for compatibility; it does not render a personal label or watermark.
+
+## Music, SFX and guides
+
+Copy a licensed track to `public/music/background.mp3`, then add:
+
+```json
+"music": {"src":"music/background.mp3","volume":0.18}
+```
+
+All assets use public-relative paths (omit the leading `public/`). Music loops if shorter than the output, fades over half a second at the ends, and does not duck automatically. Volume is a linear multiplier; listen to its balance with the actual voice. Included SFX and their licenses are listed in `public/sfx/README.md`; a cue is `{"src":"sfx/pop.ogg","start":3.2,"volume":0.18}` in `sfx`. No music license is supplied.
+
+The default safe region is x 60–950, y 290–1630 on the logical canvas. It is a conservative layout guide, not a guarantee for every platform's changing interface. `npm run draft -- first-post --guides` draws the safe zone red and split seam blue. Contact-sheet guide marks are review annotations, not an export watermark. Check custom scene and caption collisions with the speaker too.
+
+## Render, measure and review
+
+```bash
+npm run validate -- first-post
+npm run draft -- first-post --guides
+npm run review -- first-post --draft
+npm run render -- first-post
+npm run review -- first-post
+npm run status -- first-post
+```
+
+Drafts are unmastered. Final rendering measures the mix then applies a static audio gain targeting −14 LUFS integrated with a −1 dBTP ceiling, copying the encoded video without re-encoding. `--no-master` skips that audio pass. Verify the result's measured levels. Rendering replaces its conventional output file; copy old MP4s you want to preserve first.
+
+Reviews produce `output/review/<slug>/report.json`, `report.md` and `contact.jpg` (draft folder: `<slug>-draft`). Checks include selected dimensions/fps/frame count, audio presence/stereo, first-frame blackness and freezes; final checks include loudness/true peak. The sheet samples two frames per second. Review single frames around reveals/joins as well. A successful status command or current report does not mean all its measurements passed.
+
+Use the [review-video skill](../.agents/skills/review-video/SKILL.md) for independent visual judgment, and [DIALOGUE.md](DIALOGUE.md) to record take/gap/listening evidence. Listening must cover the exact exported file; replacing its file or receipt expires prior evidence and reports even without a filename change. Pending human checks stay visible. Receipts do not cover every external asset/scene implementation: rerender and review after changes to those too.
+
+## Sharing and local privacy
+
+Projects, source assets under `public/projects/`, models, outputs and music under `public/music/` are ignored by Git. Other locations may be committed. Keep ledgers and review notes inside the ignored project. The editor has no external upload or publishing workflow. Review final audio/video before sharing it yourself.

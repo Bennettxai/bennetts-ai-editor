@@ -1,0 +1,44 @@
+name: Editor checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Node 22
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y ffmpeg
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Check prerequisites
+        run: npm run doctor
+      - name: Test behavior
+        # Optional local ASR reports an explicit skip without whisper/model/speech fixture.
+        # JSON import and media tests still run; no model or personal media is downloaded.
+        run: npm test
+      - name: Check types
+        run: npm run typecheck
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+      - name: Prepare render browser
+        run: npx remotion browser ensure
+      - name: Render synthetic acceptance fixtures
+        timeout-minutes: 10
+        run: node --test --test-concurrency=1 tests/format-render.mjs tests/dialogue-render.mjs

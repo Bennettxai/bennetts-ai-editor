@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.0.0 — 2026-11-18
+
+- Renamed the product to AI Video Editor, adopted neutral scene defaults and removed the permanent export watermark. Preserved legal attribution, repository address and compatible composition ID.
+- New projects default to 4K and supported native CFR timing; exact integer/rational rates from 1–120 fps, 540 × 960 drafts, CRF 10 final video and video-copy audio mastering. Legacy edits retain 1080p/30 defaults. VFR and unsupported video origins receive explicit working-copy diagnostics.
+- Added exact saved dialogue plans, identity/whole-word checks, narrowly reviewed boundary exceptions, versioned snapshots, source/output frame manifests and deliberate snapshot recovery. Changed dialogue requires archived clearing of dependent overlays.
+- Added separate take, cut-coverage and listening evidence. Heard media/receipts and measured reports bind exact artifacts; rerenders expire stale evidence. Technical checks do not certify human review.
+- Added doctor/status commands, portable dialogue/edit/review skills for Codex and Claude Code, complete local workflow/recovery documentation and CI with bounded real 4K/fractional renders.
+- Raised the Node floor to 22 and synchronized Remotion packages at 4.0.544, resolving the observed dependency advisory. Optional ASR test prerequisites now report explicit skips.
+
+Projects, recordings, outputs and models remain local and ignored. No automatic semantic take selection, exhaustive acoustic certification, hosted services or publishing was added.
+
 ## 2.0.0
 
 - **Transcribe** locally with whisper.cpp (`npm run transcribe`), or import Whisper / WhisperX / whisper.cpp JSON. Word times are corrected against the silences measured in your audio.

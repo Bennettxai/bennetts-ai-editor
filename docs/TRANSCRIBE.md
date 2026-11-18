@@ -1,43 +1,54 @@
-# Set up transcription
+# Local transcription or imported words
 
-`npm run transcribe` uses [whisper.cpp](https://github.com/ggml-org/whisper.cpp), which runs on your computer. Nothing is uploaded and there is no API key.
+`npm run transcribe` either invokes local [whisper.cpp](https://github.com/ggml-org/whisper.cpp) or reads an existing timed JSON. The editor does not upload audio and requires no transcription API key. Run commands from the repository root after `npm run init -- <slug> --input <video>`.
 
-## 1. Install whisper.cpp
+## Check readiness
 
-- **macOS:** `brew install whisper-cpp`
-- **Windows / Linux:** follow the build instructions in the whisper.cpp README, then make sure `whisper-cli` is on your PATH.
+```bash
+npm run doctor
+```
 
-Check it: `whisper-cli --help`
+Required Node/FFmpeg/ffprobe/Remotion checks are separate from optional whisper/model readiness. A missing optional ASR dependency does not block imported JSON. Doctor verifies a readable model file, not its content or compatibility; a real transcription checks that. It also does not launch the render browser.
 
-## 2. Download one model
+## Option A: local whisper.cpp
 
-Make a `models/` folder in this repo (it is ignored by Git) and download a model into it. `small.en` is a good balance of speed and accuracy for English:
+On macOS, `brew install whisper-cpp` is one installation option. On Linux or Windows, follow the official project's build instructions and put `whisper-cli` on PATH. The editor checks `whisper-cli`, `whisper-cpp`, then the historical `main` executable for full-JSON/model support.
+
+Download a compatible ggml model into the ignored `models/` directory. For example, an English model:
 
 ```bash
 mkdir -p models
-curl -L -o models/ggml-small.en.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin
+curl -fL -o models/ggml-small.en.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin
+npm run doctor -- --model models/ggml-small.en.bin
+npm run transcribe -- first-post --model models/ggml-small.en.bin
 ```
 
-Use `ggml-base.en.bin` for a faster, smaller download, or `ggml-small.bin` / `ggml-medium.bin` for other languages. The editor looks in `models/` and `~/.whisper-models/`, or you can pass `--model /path/to/model.bin` or set `WHISPER_MODEL`.
+Choose a model appropriate to the language and machine. Model lookup order is explicit `--model`, `WHISPER_MODEL`, `models/`, then `~/.whisper-models/`. An explicitly selected missing file is reported instead of silently falling back. Models remain local and uncommitted.
 
-## 3. Transcribe
+## Option B: import timed JSON
 
 ```bash
-npm run transcribe -- my-first-video
+npm run transcribe -- first-post --json "/path/to/words.json"
 ```
 
-This writes `projects/my-first-video/transcript.json` with every word and its start and end time on the original recording's clock, plus the silences measured from your audio.
+Supported forms include Whisper/WhisperX word timestamps, whisper.cpp full JSON, and a plain object:
 
-Whisper's word times tend to drift into pauses. The editor corrects that by measuring where your audio is actually quiet (relative to how loud your recording is) and moving words back onto the speech they belong to. Word *order and text* come from Whisper; *where speech is* comes from your audio.
-
-## Already have a transcript?
-
-Import a JSON with word timestamps from OpenAI Whisper (`--word_timestamps True`), WhisperX, whisper.cpp (`-ojf`) or `{"words":[{"text","start","end"}]}`:
-
-```bash
-npm run transcribe -- my-first-video --json /path/to/transcript.json
+```json
+{"words":[{"text":"Actual","start":0.2,"end":0.5},{"text":"speech","start":0.5,"end":0.9}]}
 ```
 
-## Check it
+These example words are only a schema illustration. Supply actual recognized/reviewed words on the **imported source recording's clock**, not edited output times or estimated script timings. SRT is phrase timing and belongs to the separate captions command. JSON import needs neither a model nor whisper.cpp; do not combine `--json` and `--model`.
 
-Read the transcript against the recording. Names, numbers, brand names and jargon are the usual mistakes. Fix the `text` of a word in `transcript.json` and keep its times. Then rerun `npm run cut` and `npm run captions -- <slug> --words` so the fixes flow through.
+## Inspect the result
+
+Both routes measure silences in the imported audio with FFmpeg and write `projects/<slug>/transcript.json`: `clock:"source"`, `engine`, `silenceThreshold`, `silences`, refined `words`, and `heard` (the original recognizer/import timings). Silence-based refinement can move word boundaries. It is an estimate, not proof that quiet consonants, noise or false starts were handled correctly.
+
+Compare against the source recording, especially names, numbers, jargon and words stretched over breaths/throat clears. Correct text only when justified; keep timing unless actual source inspection supports a timing correction. Preserve complete phonemes. `cut` flags are not an exhaustive noise audit; follow [DIALOGUE.md](DIALOGUE.md).
+
+Transcribing again replaces the working source transcript. Back up a version you want to keep first. Before a first dialogue revision, corrected words require a newly generated and reviewed cut plan. After a revision exists, even a text correction invalidates the exact transcript hash. Follow [RECOVERY.md](RECOVERY.md): adopt an intentional correction with `dialogue --snapshot`, clear/rebuild dependent output timing, then generate and review a new plan. Never edit hashes to force an old reviewed plan through.
+
+`npm run words -- <slug>` produces the mapped **output-clock** words after cuts. Do not replace the canonical source transcript with that file.
+
+## Test coverage
+
+The optional ASR integration test uses a locally available speech fixture, whisper.cpp and a compatible model. It reports a named skip if a prerequisite is missing; that does not prove transcription worked. Imported-JSON workflows are exercised without ASR, including bounded real-render tests. Models and personal recordings are never test fixtures committed to the repository.

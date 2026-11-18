@@ -1,54 +1,34 @@
 ---
 name: edit-video
-description: Turn a talking-head recording into a finished vertical short with this repository - transcribe, cut dead air, word captions, split-screen motion graphics synced to speech, mastered audio and a measured review. Use when the user gives a recording or asks to edit, cut, caption or animate a video.
+description: Use when a user supplies a recording or requests a complete vertical talking-head edit, captions, split-screen graphics or a revision in AI Video Editor.
 ---
 
 # Edit a video
 
-Read `README.md`, `docs/EDITING.md` and `taste/PRINCIPLES.md` first. The rules in PRINCIPLES are the quality bar.
+Read [README.md](../../../README.md), [EDITING.md](../../../docs/EDITING.md) and [taste/PRINCIPLES.md](../../../taste/PRINCIPLES.md). Run commands from the repository root. Preserve source footage and use only supported local commands.
 
-## 1. Set up
+## 1. Prepare the dialogue
 
-- New recording: `npm run init -- <slug> --input "<path>"`. Existing project: open `projects/<slug>/edit.json`.
-- Ask what the video is about and who it's for if that isn't clear, in one question. Otherwise proceed.
+Run `npm run doctor`. Initialize with `npm run init -- <slug> --input "<path>"`, or inspect the existing project/status. New projects use 4K and supported native CFR fps; legacy format defaults remain 1080p/30. Diagnose unsupported sources using EDITING.md, preserving originals and normalization provenance.
 
-## 2. Transcribe
+**Use the edit-dialogue skill** in `.agents/skills/edit-dialogue/SKILL.md` for transcription, complete-take selection, exhaustive head/tail/gap/join/noise review, exact saved-plan application and revision evidence. Read its linked DIALOGUE.md and RECOVERY.md. Do not substitute the rough silence proposal for acoustic review or silently recut an approved project. Confirm the concrete selection unless already authorized.
 
-- `npm run transcribe -- <slug>`. If whisper.cpp or a model is missing, point the user to `docs/TRANSCRIBE.md` or ask for a transcript JSON (`--json`). **Never invent a transcript.**
-- Read `transcript.json`. Fix obvious misrecognitions in `text` (names, numbers, jargon) and tell the user what you changed. Keep the times.
+## 2. Captions and graphics plan
 
-## 3. Cut (needs approval)
+Apply rebuilds word captions. For a reviewed grouping change, use `npm run captions -- <slug> --words --group 2 --apply`. Phrase/SRT alternatives are in EDITING.md. Correct source transcript mistakes through the documented recovery flow, not by patching identity hashes.
 
-- `npm run cut -- <slug>` and read `cuts.proposed.json`.
-- Go through the flags: decide on each `repeat` (restart or deliberate?), `filler` and `unworded` region. If a line was said twice, pick the better complete take and adjust `clips` by hand.
-- Show the user a short cut plan: what goes, why, and the new length. **Get approval before applying dialogue cuts**, then `npm run cut -- <slug> --apply` (plus your manual clip edits).
+Run `npm run words -- <slug>` for the current **output clock**. Propose 2–5 useful graphic moments, each with range, scene, short on-screen wording and the exact word for every reveal. Use only supported claims. Favor a visual explanation over repeating subtitles. Show the concrete plan and obtain approval unless already authorized.
 
-## 4. Captions
+## 3. Build
 
-- After applying cuts the word captions are already built. Otherwise run `npm run captions -- <slug> --words --apply`. Use `--group 2` or `3` only if the user prefers pages.
+Write approved `visuals` in `edit.json`. Use built-in scenes or register a custom component in `src/scenes/custom/index.tsx`; use `useTiming()` for native-rate timing and run `npm run typecheck`. Keep artwork in its stage and reference project assets under `public/projects/<slug>/`. Music requires a supplied licensed track; SFX belong on meaningful events.
 
-## 5. Plan the graphics (needs approval)
+Run `npm run validate -- <slug>`. Resolve errors and inspect craft warnings. Changed dialogue requires explicitly archived clearing/rebuilding of captions, cards, visuals and SFX, even when old timestamps fit. There is no automatic semantic retiming.
 
-- `npm run words -- <slug>` for the finished-edit time of every word.
-- Pick 2–5 moments where a graphic shows something the voice can't: a number, steps, a comparison of sizes (bars), a screenshot the user supplied, the one payoff line (quote). Skip the first 3 s unless the hook needs a visual.
-- For each moment write: time range, scene, on-screen words (3–6), and the word each reveal lands on. Vary scenes; never two of the same in a row. Only use numbers and claims the speaker says or the user provides.
-- Show the plan as a short table and wait for approval or changes.
+## 4. Review the export
 
-## 6. Build
+Run `npm run draft -- <slug> --guides`, then `npm run review -- <slug> --draft`. Inspect contact sheets/frames, listen when available, fix and redraft. Pending human gates permit a diagnostic preview.
 
-- Write `visuals` into `edit.json` using the scenes in `docs/EDITING.md`, with `at` times from `npm run words`. A scene the built-ins can't do goes in `src/scenes/custom/index.tsx` (frame-driven only, inside `stage`, using `tokens`); run `npm run typecheck`.
-- Optional: a few quiet sounds from `public/sfx/README.md` on real on-screen events (never in the first 3 s), and music only if the user supplies a licensed track.
-- `npm run validate -- <slug>` and fix every error. Treat warnings as problems unless there's a reason.
+Run `npm run render -- <slug>`, then `npm run review -- <slug>` and use the review-video skill for independent evidence. Fix significant defects and rerender/review. Every replacement media/receipt can expire old listening evidence and technical reports, even under the same filename. Review the final's actual mix; a draft listening pass is insufficient.
 
-## 7. Draft, review, fix
-
-- `npm run draft -- <slug> --guides` then `npm run review -- <slug> --draft`. Look at `output/review/<slug>-draft/contact.jpg`: anything outside the red box, colliding or unreadable?
-- Fix the worst problem first and redraft. Pull single frames with ffmpeg when you need a closer look.
-
-## 8. Final
-
-- `npm run render -- <slug>` then `npm run review -- <slug>`. All measured checks must pass.
-- Run the **review-video** skill: hand a fresh subagent the video path and nothing else from your reasoning. Fix what it ranks worst, re-render, and review again with a new critic. Stop after 3 rounds or when it says `ship`.
-- Give the user `output/<slug>.mp4`, the review report, and an honest list of what you could and couldn't check. **If you didn't listen to the audio, say so.** Ask them to watch it in full with sound before posting.
-
-Never overwrite source footage, commit media, projects or transcripts, or post anywhere.
+Run `npm run status -- <slug>`. Deliver the MP4 and report with technical results, take/gap/listening states and unresolved limitations. Without playback, say “I have not listened to this export”; do not call it fully reviewed. No posting is configured.
