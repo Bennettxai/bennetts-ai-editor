@@ -1,0 +1,11 @@
+export type EditFormat={fps:string;resolution:'4k'|'1080p'};
+export type OutputFormat={fps:number;fpsRatio:string;width:number;height:number;scale:number};
+export const LEGACY_FPS:number;
+export function parseFps(value:unknown):{fps:number;fpsRatio:string};
+export function getFormat(edit?:{format?:EditFormat}):OutputFormat;
+export function frameAt(seconds:number,fps?:number):number;
+export function clipFrames(clip:{start:number;end:number},fps?:number):number;
+export function timelineFrames(edit:{format?:EditFormat;clips:Array<{start:number;end:number}>},fps?:number):number;
+export function motionFrames(frames:number,fps?:number):number;
+export function relativeFrame(visual:{start:number},seconds:number,fps?:number):number;
+export function revealFrame(visual:{start:number;at?:number[]},index:number,stagger?:number,lead?:number,fps?:number):number;

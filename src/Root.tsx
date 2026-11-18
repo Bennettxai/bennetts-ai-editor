@@ -1,24 +1,23 @@
 import React from 'react';
 import {clipPresentation,musicLevel} from './presentation.mjs';
 import {DEFAULT_VISUAL_HEIGHT,SAFE,captionTop,footageRect,splitProgress,stageRect} from './layout.mjs';
-import {AbsoluteFill,Audio,Composition,OffthreadVideo,Sequence,interpolate,staticFile,useCurrentFrame} from 'remotion';
+import {AbsoluteFill,Audio,Composition,OffthreadVideo,Sequence,interpolate,staticFile,useCurrentFrame,useVideoConfig} from 'remotion';
 import {Scene} from './scenes';
 import {FPS,Visual,fonts,tokens} from './scenes/kit';
+import {EditFormat,clipFrames,frameAt,getFormat,motionFrames,timelineFrames} from './format.mjs';
 
 type Range = {start:number;end:number};
 type TextRange = Range & {text:string};
 type Sound = {src:string;volume?:number};
-export type Edit = {title:string;source:string;clips:Array<Range & {zoom?:number;focusX?:number;focusY?:number}>;captions?:TextRange[];captionStyle?:'word'|'phrase';cards?:TextRange[];visuals?:Visual[];layout?:{visualHeight?:number};sfx?:Array<Sound & {start:number}>;music?:Sound};
+export type Edit = {format?:EditFormat;title:string;source:string;clips:Array<Range & {zoom?:number;focusX?:number;focusY?:number}>;captions?:TextRange[];captionStyle?:'word'|'phrase';cards?:TextRange[];visuals?:Visual[];layout?:{visualHeight?:number};sfx?:Array<Sound & {start:number}>;music?:Sound};
 type Props = {edit:Edit;guides?:boolean};
-const frames=(seconds:number)=>Math.round(seconds*FPS);
-const length=(clip:Range)=>frames(clip.end)-frames(clip.start);
-const duration=(edit:Edit)=>edit.clips.reduce((sum,clip)=>sum+length(clip),0);
+const duration=timelineFrames;
 
 // A card that opens the video appears fully formed: frame 1 must be a finished picture.
 const Card:React.FC<{text:string;instant?:boolean;durationInFrames?:number}>=({text,instant,durationInFrames=90})=>{
- const frame=useCurrentFrame();
+ const frame=useCurrentFrame();const {fps}=useVideoConfig();
  const drift=interpolate(frame,[0,durationInFrames],[1,1.03],{extrapolateLeft:'clamp',extrapolateRight:'clamp'}); // holds never freeze
- const opacity=instant?1:interpolate(frame,[0,7],[0,1],{extrapolateLeft:'clamp',extrapolateRight:'clamp'});
+ const opacity=instant?1:interpolate(frame,[0,motionFrames(7,fps)],[0,1],{extrapolateLeft:'clamp',extrapolateRight:'clamp'});
  return <AbsoluteFill style={{background:tokens.background,justifyContent:'center',transform:`scale(${drift})`,padding:`${SAFE.top}px ${1080-SAFE.right}px ${1920-SAFE.bottom}px ${SAFE.left+30}px`,opacity}}>
   <div style={{fontFamily:fonts.mono,fontSize:23,letterSpacing:5,color:tokens.secondary,marginBottom:40}}>BENNETT LEGACY</div>
   <div style={{width:96,height:3,background:tokens.paper,marginBottom:48}}/>
@@ -39,11 +38,13 @@ const Guides:React.FC<{visualHeight:number}>=({visualHeight})=><AbsoluteFill sty
 </AbsoluteFill>;
 
 const Editor:React.FC<Props>=({edit,guides})=>{
- const frame=useCurrentFrame();
+ const frame=useCurrentFrame();const {fps}=useVideoConfig();
+ const frames=(seconds:number)=>frameAt(seconds,fps);
+ const length=(clip:Range)=>clipFrames(clip,fps);
  const visuals=edit.visuals??[];
  const visualHeight=edit.layout?.visualHeight??DEFAULT_VISUAL_HEIGHT;
  const total=duration(edit);
- const split=splitProgress(frame,visuals,FPS,total);
+ const split=splitProgress(frame,visuals,fps,total);
  const rect=footageRect(split,visualHeight);
  const stage=stageRect(visualHeight);
  const style=edit.captionStyle??'phrase';
@@ -67,7 +68,7 @@ const Editor:React.FC<Props>=({edit,guides})=>{
   {(edit.cards??[]).map((card,index)=><Sequence key={index} from={frames(card.start)} durationInFrames={length(card)}><Card text={card.text} instant={frames(card.start)===0} durationInFrames={length(card)}/></Sequence>)}
   {caption&&<Caption text={caption.text} style={style} top={captionTop(split,visualHeight,style==='word'?undefined:1480)}/>}
   {guides&&<Guides visualHeight={visualHeight}/>}
-  {edit.music&&<Audio src={staticFile(edit.music.src)} volume={musicLevel(frame,total,edit.music.volume??0.18)} loop/>}
+  {edit.music&&<Audio src={staticFile(edit.music.src)} volume={musicLevel(frame,total,edit.music.volume??0.18,fps)} loop/>}
   {(edit.sfx??[]).map((cue,index)=><Sequence key={index} from={frames(cue.start)} durationInFrames={Math.max(1,total-frames(cue.start))}><Audio src={staticFile(cue.src)} volume={cue.volume??0.25}/></Sequence>)}
  </AbsoluteFill>;
 };
@@ -75,5 +76,5 @@ const sample:Edit={title:"Bennett’s AI Editor",source:'',clips:[{start:0,end:3
 const Welcome:React.FC=()=><AbsoluteFill style={{background:tokens.background,color:tokens.paper,fontFamily:fonts.sans}}><Card text='Your next video starts here.' instant/></AbsoluteFill>;
 export const Root:React.FC=()=><>
  <Composition id='Welcome' component={Welcome} width={1080} height={1920} fps={FPS} durationInFrames={90}/>
- <Composition id='BennettsEditor' component={Editor} width={1080} height={1920} fps={FPS} durationInFrames={90} defaultProps={{edit:sample,guides:false}} calculateMetadata={({props})=>({durationInFrames:duration(props.edit)})}/>
+ <Composition id='BennettsEditor' component={Editor} width={1080} height={1920} fps={FPS} durationInFrames={90} defaultProps={{edit:sample,guides:false}} calculateMetadata={({props})=>({durationInFrames:duration(props.edit),fps:getFormat(props.edit).fps})}/>
 </>;

@@ -1,4 +1,5 @@
-// Browser-safe layout math shared by the renderer and tests. 1080×1920 at 30 fps.
+// Browser-safe layout math on the 1080×1920 logical canvas.
+import {motionFrames} from './format.mjs';
 export const W=1080,H=1920,FPS=30;
 // Instagram Reels safe area: the 4:5 feed crop and the app's own buttons hide everything outside it.
 export const SAFE={top:290,bottom:1630,left:60,right:950};
@@ -11,7 +12,7 @@ export function splitRanges(visuals=[],fps=FPS){
  const ranges=[];
  for(const v of visuals){
   const a=Math.round(v.start*fps),b=Math.round(v.end*fps),prev=ranges.at(-1);
-  if(prev&&a-prev[1]<BRIDGE)prev[1]=b;else ranges.push([a,b]);
+  if(prev&&a-prev[1]<motionFrames(BRIDGE,fps))prev[1]=b;else ranges.push([a,b]);
  }
  return ranges;
 }
@@ -19,7 +20,7 @@ export function splitRanges(visuals=[],fps=FPS){
 export function splitProgress(frame,visuals=[],fps=FPS,totalFrames=Infinity){
  for(const [a,b] of splitRanges(visuals,fps)){
   if(frame<a||frame>=b)continue;
-  const exit=b>=totalFrames?0:Math.min(EXIT,Math.floor((b-a)/3)),enter=Math.min(ENTER,Math.floor((b-a)/3));
+  const exit=b>=totalFrames?0:Math.min(motionFrames(EXIT,fps),Math.floor((b-a)/3)),enter=Math.min(motionFrames(ENTER,fps),Math.floor((b-a)/3));
   if(exit&&frame>=b-exit)return 1-easeIn(clamp((frame-(b-exit)+1)/exit));
   return easeOut(clamp((frame-a+1)/enter));
  }

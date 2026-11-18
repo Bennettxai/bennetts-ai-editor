@@ -3,15 +3,17 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
-import {safeSlug,validateEdit,lintEdit,durationFrames,mediaPath,FPS} from '../src/edit.mjs';
+import {safeSlug,validateEdit,lintEdit,durationFrames,mediaPath} from '../src/edit.mjs';
 import {parseSrt,mapCaptions,mapWords,captionsFromWords} from '../src/captions.mjs';
 import {parseTranscript,parseSilences,silenceThreshold,noiseFloor,refineWords} from '../src/transcript.mjs';
 import {proposeCuts,clipsWithin} from '../src/cuts.mjs';
 import {loudnormFilter,parseLoudnorm,MASTER} from '../src/audio.mjs';
 import {review} from './review.mjs';
+import {getFormat,parseFps} from '../src/format.mjs';
+import {probeSource,cfrInstruction} from './media.mjs';
 const root=process.cwd();
 const USAGE=`Usage:
-  npm run init -- <slug> --input <video>
+  npm run init -- <slug> --input <video> [--resolution 4k|1080p] [--fps <integer-or-rational>]
   npm run transcribe -- <slug> [--json <whisper.json>] [--model <ggml model>]
   npm run cut -- <slug> [--max-pause 0.35] [--remove-fillers] [--apply [--replace-captions]]
   npm run captions -- <slug> --words [--group 1] [--apply]   |   --srt <file> [--apply]
@@ -28,9 +30,11 @@ export function execute(command,args,options={}){
  return result;
 }
 function probe(file){
- const info=JSON.parse(execute('ffprobe',['-v','error','-show_entries','format=duration:stream=codec_type','-of','json',file]).stdout);
- if(!info.streams?.some(s=>s.codec_type==='video'))throw new Error('Input needs a video stream.');
- const duration=Number(info.format.duration);if(!Number.isFinite(duration)||duration<=0)throw new Error('Cannot determine media duration.');
+ const info=JSON.parse(execute('ffprobe',['-v','error','-show_entries','stream=codec_type,duration,nb_frames,r_frame_rate','-of','json',file]).stdout);
+ const video=info.streams?.find(s=>s.codec_type==='video');
+ if(!video)throw new Error('Input needs a video stream.');
+ const count=Number(video.nb_frames);
+ const duration=Number.isSafeInteger(count)&&count>0?count/parseFps(video.r_frame_rate).fps:probeSource(file).video.duration;if(!Number.isFinite(duration)||duration<=0)throw new Error('Cannot determine media duration.');
  return duration;
 }
 function project(slug){safeSlug(slug);return path.join(root,'projects',slug);}
@@ -91,18 +95,23 @@ function detectSilences(file,duration){
  if(end<duration-0.05){const last=silences.at(-1);if(last&&last.end>=end-0.05)last.end=duration;else silences.push({start:Math.round(end*1000)/1000,end:duration});}
  return {silences,threshold};
 }
-function init(slug,input){
+function init(slug,input,options={}){
  const dir=project(slug);const assets=path.join(root,'public','projects',slug);
  if(fs.existsSync(dir)||fs.existsSync(assets))throw new Error(`Project ${slug} already exists; choose another name.`);
  if(!input||!fs.existsSync(input)||!fs.statSync(input).isFile())throw new Error('Input file is missing. Use --input /path/to/video.mp4');
- const duration=probe(path.resolve(input));
+ const metadata=probeSource(path.resolve(input));
+ const format={fps:options.fps??metadata.video.fpsRatio,resolution:options.resolution??'4k'};
+ const selected=getFormat({format});format.fps=selected.fpsRatio;
+ if(metadata.video.variableFrameRate)throw new Error(`Variable-frame-rate input cannot be edited as native-frame-exact. Preserve the original and create an explicit CFR working copy locally, then import that copy:\n${cfrInstruction(path.resolve(input),selected.fpsRatio)}`);
+ const duration=metadata.video.duration;
  const ext=path.extname(input).toLowerCase();if(!['.mp4','.mov','.m4v','.webm'].includes(ext))throw new Error('Use MP4, MOV, M4V or WebM input.');
  const source=`projects/${slug}/input${ext}`;
- const end=Math.floor(duration*FPS)/FPS;if(end<=0)throw new Error('Input is shorter than one frame.');
- const edit={title:slug.split('-').join(' '),source,clips:[{start:0,end}],captions:[],cards:[],sfx:[]};
+ const end=Math.floor(duration*selected.fps+1e-6)/selected.fps;if(end<=0)throw new Error('Input is shorter than one frame.');
+ const edit={title:slug.split('-').join(' '),source,format,clips:[{start:0,end}],captions:[],cards:[],sfx:[]};
  fs.mkdirSync(assets,{recursive:true});fs.mkdirSync(dir,{recursive:true});
  fs.copyFileSync(path.resolve(input),path.join(root,'public',source));
  writeJson(path.join(dir,'edit.json'),edit);
+ writeJson(path.join(dir,'source.probe.json'),{...metadata,source,originalName:path.basename(input),outputFrameRate:selected.fpsRatio});
  console.log(`Created projects/${slug}/edit.json. Next: npm run transcribe -- ${slug}`);
  return edit;
 }
@@ -154,13 +163,13 @@ function transcribe(slug,args){
 // ---------- cut ----------
 function overlayErrors(edit){try{validateEdit(edit);return null;}catch(error){return error.message;}}
 function cut(slug,args){
- const edit=validateEdit(readEdit(slug));const duration=checkMedia(edit);
+ const edit=validateEdit(readEdit(slug));const duration=checkMedia(edit);const {fps}=getFormat(edit);
  const maxPause=flag(args,'--max-pause');
  const {words:spoken,silences,heard}=transcriptData(slug);
  if(maxPause!==undefined&&!(Number(maxPause)>=0.1&&Number(maxPause)<=3))throw new Error('--max-pause must be 0.1–3 seconds.');
- const result=proposeCuts(spoken,duration,{...(maxPause?{maxPause:Number(maxPause)}:{}),removeFillers:args.includes('--remove-fillers'),...(silences?{silences,heard}:{})});
+ const result=proposeCuts(spoken,duration,{...(maxPause?{maxPause:Number(maxPause)}:{}),removeFillers:args.includes('--remove-fillers'),...(silences?{silences,heard}:{})},fps);
  writeJson(projectFile(slug,'cuts.proposed.json'),result);
- const kept=durationFrames({clips:result.clips})/FPS;
+ const kept=durationFrames({...edit,clips:result.clips})/fps;
  console.log(`Proposed ${result.clips.length} clips: ${kept.toFixed(2)} s kept, ${result.removedSeconds.toFixed(2)} s removed.`);
  for(const d of result.decisions)console.log(`  ${d.action.padEnd(4)} at ${d.at.toFixed(2)} s  ${d.reason}`);
  for(const f of result.flags)console.log(`  ${f.type.toUpperCase()} at ${f.at.toFixed(2)} s  "${f.text}"  ${f.note}`);
@@ -168,9 +177,9 @@ function cut(slug,args){
  if(!args.includes('--apply')){console.log('edit.json was not changed. Add --apply after review.');return;}
  if(edit.captionStyle!=='word'&&edit.captions?.length&&!args.includes('--replace-captions'))throw new Error('This project has phrase captions, and cutting would move them off their words. Re-import them after cutting (npm run captions -- <slug> --srt …), or add --replace-captions to switch to word captions.');
  // Cut only inside the clips you already have: takes you removed stay removed, framing is kept.
- const clips=clipsWithin(edit.clips,result.clips);
+ const clips=clipsWithin(edit.clips,result.clips,fps);
  const next={...edit,clips,captionStyle:'word'};
- next.captions=captionsFromWords(mapWords(transcriptWords(slug),clips),durationFrames(next)/FPS);
+ next.captions=captionsFromWords(mapWords(transcriptWords(slug),clips,fps),durationFrames(next)/fps,{fps});
  const problem=overlayErrors(next);
  if(problem)throw new Error(`Cuts not applied: ${problem} Re-time or remove those items first (cuts change every output time).`);
  writeJson(projectFile(slug,'edit.json'),next);
@@ -182,8 +191,9 @@ function captions(slug,args){
  if(args[0]==='--words'){
   const edit=load(slug,true);const group=Number(flag(args,'--group')??1);
   if(!Number.isInteger(group)||group<1||group>5)throw new Error('--group must be 1–5 words.');
-  const total=durationFrames(edit)/FPS;
-  const mapped=captionsFromWords(mapWords(transcriptWords(slug),edit.clips),total,{group});
+  const {fps}=getFormat(edit);
+  const total=durationFrames(edit)/fps;
+  const mapped=captionsFromWords(mapWords(transcriptWords(slug),edit.clips,fps),total,{group,fps});
   const proposed=validateEdit({...edit,captions:mapped,captionStyle:'word'});
   writeJson(projectFile(slug,'captions.proposed.json'),mapped);
   console.log(`Wrote ${mapped.length} word captions to projects/${slug}/captions.proposed.json.`);
@@ -195,7 +205,7 @@ function captions(slug,args){
  const edit=load(slug,true);
  const filename=path.resolve(args[1]);
  if(!fs.existsSync(filename)||!fs.statSync(filename).isFile())throw new Error('SRT file is missing. Use --srt /path/to/source.srt');
- const mapped=mapCaptions(parseSrt(fs.readFileSync(filename,'utf8')),edit.clips);
+ const mapped=mapCaptions(parseSrt(fs.readFileSync(filename,'utf8')),edit.clips,getFormat(edit).fps);
  const proposed=validateEdit({...edit,captions:mapped});
  writeJson(projectFile(slug,'captions.proposed.json'),mapped);
  console.log(`Wrote ${mapped.length} output-clock caption segments to projects/${slug}/captions.proposed.json.`);
@@ -209,7 +219,7 @@ function captions(slug,args){
 // ---------- words (output clock, for syncing visuals and SFX) ----------
 function words(slug){
  const edit=validateEdit(readEdit(slug));
- const mapped=mapWords(transcriptWords(slug),edit.clips);
+ const mapped=mapWords(transcriptWords(slug),edit.clips,getFormat(edit).fps);
  writeJson(projectFile(slug,'words.output.json'),{clock:'output',words:mapped});
  console.log(mapped.map(w=>`${w.start.toFixed(2).padStart(7)}  ${w.text}`).join('\n'));
  console.log(`\n${mapped.length} words on the finished-edit clock. Saved to projects/${slug}/words.output.json.`);
@@ -232,7 +242,7 @@ function render(slug,args=[],draft=false){
  const cli=path.join(root,'node_modules','@remotion','cli','remotion-cli.js');
  const output=draft?`output/drafts/${slug}.mp4`:`output/${slug}.mp4`;
  fs.mkdirSync(path.dirname(path.join(root,output)),{recursive:true});
- const quality=draft?['--crf','28','--scale','0.5']:['--crf','18'];
+ const quality=draft?['--crf','28','--scale','0.5']:['--crf','10','--scale',String(getFormat(edit).scale)];
  execute(process.execPath,[cli,'render','src/index.ts','BennettsEditor',output,'--props',props,'--codec','h264',...quality,'--concurrency','2'],{stdio:'inherit'});
  if(!draft&&!args.includes('--no-master'))master(path.join(root,output));
  console.log(`Exported ${output}${draft?'':`. Next: npm run review -- ${slug}`}`);
@@ -251,14 +261,14 @@ function demo(){
 
 try{
  const [command,slug,...args]=process.argv.slice(2);
- if(command==='init')init(slug,args[0]==='--input'?args[1]:undefined);
+ if(command==='init')init(slug,flag(args,'--input'),{fps:flag(args,'--fps'),resolution:flag(args,'--resolution')});
  else if(command==='transcribe')transcribe(slug,args);
  else if(command==='cut')cut(slug,args);
  else if(command==='captions')captions(slug,args);
  else if(command==='words')words(slug);
  else if(command==='validate'){
-  const edit=load(slug);const warnings=lintEdit(edit);
-  console.log(`Valid: ${durationFrames(edit)} frames, ${(durationFrames(edit)/FPS).toFixed(2)} seconds, 1080×1920 at ${FPS}fps.`);
+  const edit=load(slug);const warnings=lintEdit(edit);const format=getFormat(edit);
+  console.log(`Valid: ${durationFrames(edit)} frames, ${(durationFrames(edit)/format.fps).toFixed(2)} seconds, ${format.width}×${format.height} at ${format.fpsRatio}fps.`);
   for(const w of warnings)console.log(`Warning: ${w}`);
  }
  else if(command==='render')render(slug,args);

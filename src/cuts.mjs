@@ -1,21 +1,21 @@
 // Rough-cut proposal from word timings (SOURCE clock). This only suggests cuts:
 // a person or assistant still judges takes, restarts and how each join sounds.
 import {validateWords} from './transcript.mjs';
-const FPS=30;
+import {LEGACY_FPS} from './format.mjs';
 const EDGE=0.05; // a silence this close to either end of the recording counts as lead-in / tail
 const FILLERS=new Set(['um','uh','erm','uhm','ah','hmm','mm']);
 const bare=text=>text.toLowerCase().replace(/[^a-z0-9']/g,'');
 const isFiller=w=>FILLERS.has(bare(w.text));
 export const CUT_DEFAULTS={padBefore:0.1,padAfter:0.15,maxPause:0.35,removeFillers:false};
 
-export function proposeCuts(input,sourceDuration,options={}){
+export function proposeCuts(input,sourceDuration,options={},FPS=LEGACY_FPS){
  const o={...CUT_DEFAULTS,...options};
  const all=validateWords(input);
  const flags=reviewFlags(all,o);
  const {ranges,decisions}=o.silences?fromSilences(all,sourceDuration,o,flags):fromWordGaps(all.filter(w=>!(o.removeFillers&&isFiller(w))),o);
  // Removed fillers are cut on whole frames, rounded outward, so no part of them survives.
  const fillerCuts=o.removeFillers?all.filter(isFiller).map(w=>[Math.floor(w.start*FPS+1e-6)/FPS,Math.ceil(w.end*FPS-1e-6)/FPS]):[];
- return finish(subtract(ranges,fillerCuts),sourceDuration,o,decisions,flags);
+ return finish(subtract(ranges,fillerCuts),sourceDuration,o,decisions,flags,FPS);
 }
 
 function reviewFlags(all,o){
@@ -80,7 +80,7 @@ function subtract(ranges,cuts){
  return out;
 }
 
-function finish(ranges,sourceDuration,o,decisions,flags){
+function finish(ranges,sourceDuration,o,decisions,flags,FPS){
  // Snap outward to whole frames and clamp to the source, then merge ranges that touch.
  const last=Math.floor(sourceDuration*FPS+1e-6);
  const clips=[];
@@ -98,7 +98,7 @@ function finish(ranges,sourceDuration,o,decisions,flags){
 
 /** Apply a new proposal inside the clips you already have: hand-removed takes stay removed,
  *  and each piece keeps the zoom/focus of the clip it came from. */
-export function clipsWithin(existing,proposed){
+export function clipsWithin(existing,proposed,FPS=LEGACY_FPS){
  const out=[];
  for(const clip of existing){
   const {start,end,...framing}=clip;

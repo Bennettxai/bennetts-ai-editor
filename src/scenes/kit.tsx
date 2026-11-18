@@ -1,5 +1,6 @@
 import React from 'react';
-import {Easing,interpolate,useCurrentFrame} from 'remotion';
+import {Easing,interpolate,useCurrentFrame,useVideoConfig} from 'remotion';
+import {motionFrames,relativeFrame,revealFrame} from '../format.mjs';
 
 // Bennett Legacy tokens. Change these (and branding/README.md) to restyle every scene at once.
 export const tokens={background:'#0a0a0a',surface:'#141414',paper:'#f2f2f2',secondary:'#9c9c9c',muted:'#5c5c5c',line:'#242424',dim:'#3a3a3a'};
@@ -16,19 +17,23 @@ export const leave=Easing.bezier(0.7,0,0.84,0);
 const clamp={extrapolateLeft:'clamp',extrapolateRight:'clamp'} as const;
 
 /** Output-clock seconds → frame relative to the visual's first frame. */
-export const relFrame=(visual:Visual,seconds:number)=>Math.round(seconds*FPS)-Math.round(visual.start*FPS);
+export const relFrame=relativeFrame;
 /** Reveal frame for item i: its `at` time if given, otherwise a short stagger from the start. */
-export const revealAt=(visual:Visual,i:number,stagger=6,lead=2)=>visual.at?.[i]!==undefined?relFrame(visual,visual.at[i]):lead+i*stagger;
-
-/** 0→1 entrance that starts at `from` (relative frame) and lasts `frames`. */
-export function useEnter(from=0,frames=12){
- const frame=useCurrentFrame();
- return interpolate(frame,[from,from+frames],[0,1],{...clamp,easing:arrive});
+export const revealAt=revealFrame;
+export function useTiming(){
+ const frame=useCurrentFrame();const {fps}=useVideoConfig();
+ return {frame,m:(n:number)=>motionFrames(n,fps),relative:(v:Visual,s:number)=>relFrame(v,s,fps),reveal:(v:Visual,i:number,stagger=6,lead=2)=>revealAt(v,i,stagger,lead,fps)};
 }
-/** 1→0 over the last `frames` of the scene. */
+
+/** 0→1 entrance: `from` is a project frame; `frames` is a duration authored at 30fps. */
+export function useEnter(from=0,frames=12){
+ const frame=useCurrentFrame();const {fps}=useVideoConfig();
+ return interpolate(frame,[from,from+motionFrames(frames,fps)],[0,1],{...clamp,easing:arrive});
+}
+/** 1→0 over the last `frames` (a duration authored at 30fps) of the scene. */
 export function useExit(durationInFrames:number,frames=7){
- const frame=useCurrentFrame();
- return interpolate(frame,[durationInFrames-frames,durationInFrames],[1,0],{...clamp,easing:leave});
+ const frame=useCurrentFrame();const {fps}=useVideoConfig();
+ return interpolate(frame,[durationInFrames-motionFrames(frames,fps),durationInFrames],[1,0],{...clamp,easing:leave});
 }
 
 /** Wraps every scene: kicker label, quick exit, and a slow drift so holds never freeze. */

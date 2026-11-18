@@ -1,6 +1,5 @@
 // SRT times refer to source footage. Imported caption times refer to the edit.
-const FPS=30;
-const frame=seconds=>Math.round(seconds*FPS);
+import {LEGACY_FPS,frameAt} from './format.mjs';
 function timestamp(value,cue){
  const match=/^(\d{2,}):([0-5]\d):([0-5]\d)[,.](\d{3})$/.exec(value);
  if(!match)throw new Error(`SRT cue ${cue}: use HH:MM:SS,mmm timestamps.`);
@@ -25,7 +24,8 @@ export function parseSrt(input){
   return {start,end,text};
  });
 }
-export function mapCaptions(cues,clips){
+export function mapCaptions(cues,clips,FPS=LEGACY_FPS){
+ const frame=seconds=>frameAt(seconds,FPS);
  const result=[];let outputOffset=0;
  for(const clip of clips){
   const clipStart=frame(clip.start),clipEnd=frame(clip.end);
@@ -40,7 +40,8 @@ export function mapCaptions(cues,clips){
 
 // --- Word captions from a word-level transcript ---
 // Keep a word when its onset survives the cut; clamp its end to the clip.
-export function mapWords(words,clips){
+export function mapWords(words,clips,FPS=LEGACY_FPS){
+ const frame=seconds=>frameAt(seconds,FPS);
  const out=[];let offset=0;
  for(const clip of clips){
   const a=frame(clip.start),b=frame(clip.end);
@@ -55,7 +56,8 @@ export function mapWords(words,clips){
 const display=text=>text.toUpperCase().replace(/[^\p{L}\p{N}'’\- ]/gu,'').replace(/^['’\-]+|['’\-]+$/g,'').trim();
 // One word at a time (group 1) by default: it pops on at its onset, runs into the next word during
 // speech, stays up at least minDwell, and the screen goes blank in pauses longer than maxPause.
-export function captionsFromWords(words,totalSeconds,{group=1,minDwell=0.18,maxPause=0.18}={}){
+export function captionsFromWords(words,totalSeconds,{group=1,minDwell=0.18,maxPause=0.18,fps:FPS=LEGACY_FPS}={}){
+ const frame=seconds=>frameAt(seconds,FPS);
  const pages=[];let page=[];
  words.forEach((w,i)=>{
   if(!display(w.text))return;

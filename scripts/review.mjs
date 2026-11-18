@@ -6,6 +6,7 @@ import {spawnSync} from 'node:child_process';
 import {durationFrames,lintEdit} from '../src/edit.mjs';
 import {SAFE,W,H} from '../src/layout.mjs';
 import {MASTER} from '../src/audio.mjs';
+import {getFormat,parseFps} from '../src/format.mjs';
 
 const num=v=>v==='-inf'?-Infinity:Number(v);
 export function parseAnalysis(stderr,duration){
@@ -22,12 +23,13 @@ export function parseAnalysis(stderr,duration){
  return {lufs:lufs?num(lufs[1]):null,truePeak:peak?num(peak[1]):null,channels,freezes,blacks};
 }
 
-export function evaluate({probe,analysis,expectedFrames,draft}){
+export function evaluate({probe,analysis,expectedFrames,draft,format=getFormat()}){
  const checks=[];const add=(name,pass,detail)=>checks.push({name,pass:!!pass,detail});
- const [w,h]=draft?[W/2,H/2]:[W,H];
+ const [w,h]=draft?[W/2,H/2]:[format.width,format.height];
  add('size',probe.width===w&&probe.height===h,`${probe.width}×${probe.height} (want ${w}×${h})`);
- add('fps',probe.fps==='30/1',`${probe.fps}`);
- add('frames',Math.abs(probe.frames-expectedFrames)<=1,`${probe.frames} frames (edit says ${expectedFrames})`);
+ let rateMatches=false;try{rateMatches=parseFps(probe.fps).fpsRatio===format.fpsRatio;}catch{}
+ add('fps',rateMatches,`${probe.fps} (want ${format.fpsRatio})`);
+ add('frames',probe.frames===expectedFrames,`${probe.frames} frames (edit says ${expectedFrames})`);
  add('audio',probe.audio,probe.audio?'audio stream present':'no audio stream');
  if(!draft){
   add('loudness',analysis.lufs!==null&&Math.abs(analysis.lufs-MASTER.integrated)<=1,`${analysis.lufs} LUFS integrated (want ${MASTER.integrated} ± 1)`);
@@ -36,7 +38,7 @@ export function evaluate({probe,analysis,expectedFrames,draft}){
  const [l,r]=analysis.channels;
  add('stereo',analysis.channels.length<2||(Number.isFinite(l)&&Number.isFinite(r)&&Math.abs(l-r)<12),analysis.channels.length<2?'mono':`L ${l.toFixed?.(1)} dB / R ${r.toFixed?.(1)} dB RMS`);
  add('first frame',!analysis.blacks.some(b=>b.start<0.05),'frame 1 must be a finished picture, not black');
- const seconds=(probe.frames||1)/30;
+ const seconds=(probe.frames||1)/format.fps;
  const frozen=analysis.freezes.reduce((s,f)=>s+f.end-f.start,0);
  add('stills',frozen<=Math.max(1,seconds/30),`${frozen.toFixed(2)} s with no movement over 0.5 s stretches${analysis.freezes.length?` at ${analysis.freezes.map(f=>f.start.toFixed(1)+' s').join(', ')}`:''} (allowed 1 s per 30 s)`);
  return checks;
@@ -60,7 +62,7 @@ export function review(root,slug,{draft=false,edit}){
   ?['-filter_complex','[0:a]ebur128=peak=true,astats=measure_overall=none:measure_perchannel=RMS_level[a];[0:v]freezedetect=n=0.003:d=0.5,blackdetect=d=0.1:pix_th=0.10:pic_th=0.999[v]','-map','[v]','-map','[a]']
   :['-vf','freezedetect=n=0.003:d=0.5,blackdetect=d=0.1:pix_th=0.10:pic_th=0.999'];
  const analysis=parseAnalysis(run('ffmpeg',['-hide_banner','-nostats','-i',file,...graph,'-f','null','-']).stderr,duration);
- const checks=evaluate({probe,analysis,expectedFrames:durationFrames(edit),draft});
+ const checks=evaluate({probe,analysis,expectedFrames:durationFrames(edit),draft,format:getFormat(edit)});
  // Contact sheet: 2 frames a second, safe zone drawn in red, 8 across.
  const tw=180,th=320,sx=tw/W,sy=th/H;
  const box=`drawbox=x=${Math.round(SAFE.left*sx)}:y=${Math.round(SAFE.top*sy)}:w=${Math.round((SAFE.right-SAFE.left)*sx)}:h=${Math.round((SAFE.bottom-SAFE.top)*sy)}:color=red@0.7:t=1`;

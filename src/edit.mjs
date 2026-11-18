@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-export const FPS=30;
+import {getFormat,timelineFrames} from './format.mjs';
+export {LEGACY_FPS as FPS} from './format.mjs';
 export function safeSlug(slug) {
  if(typeof slug!=='string'||! /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)||slug.length>70) throw new Error('Project name must use lowercase letters, numbers and single hyphens.');
  return slug;
@@ -20,11 +21,12 @@ export function mediaPath(root,relative) {
  return candidate;
 }
 const finite=(v)=>typeof v==='number'&&Number.isFinite(v);
-export function durationFrames(edit) {return edit.clips.reduce((total,c)=>total+Math.round(c.end*FPS)-Math.round(c.start*FPS),0);}
+export const durationFrames=timelineFrames;
 function rows(value,label){if(!Array.isArray(value))throw new Error(`${label} must be an array.`);return value;}
 function volume(value,label){if(value!==undefined&&(!finite(value)||value<0||value>1))throw new Error(`${label} volume must be between 0 and 1.`);}
 export function validateEdit(edit) {
  if(!edit||typeof edit!=='object')throw new Error('Edit must be a JSON object.');
+ const {fps:FPS}=getFormat(edit);
  assetName(edit.source);
  if(typeof edit.title!=='string'||!edit.title.trim()||edit.title.length>120)throw new Error('Title must contain 1–120 characters.');
  const clips=rows(edit.clips,'clips');if(!clips.length)throw new Error('At least one clip is required.');
