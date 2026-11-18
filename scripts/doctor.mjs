@@ -28,7 +28,9 @@ export function findWhisper({env=process.env,root=process.cwd()}={}){
 }
 export function diagnose({root=process.cwd(),nodeVersion=process.versions.node,env=process.env,home=os.homedir(),model}={}){
  const checks={};const check=(name,required,ok,detail,remedy)=>checks[name]={required,state:ok?'ready':'unavailable',detail,...(!ok?{remedy}:{})};
- check('node',true,/^\d+\./.test(nodeVersion)&&Number(nodeVersion.split('.')[0])>=22,`Node ${nodeVersion}`,'Install Node.js 22 or newer, reopen the terminal, then run npm ci.');
+ const nodeParts=/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(nodeVersion);
+ const nodeReady=nodeParts&&(Number(nodeParts[1])>22||(Number(nodeParts[1])===22&&Number(nodeParts[2])>=12));
+ check('node',true,nodeReady,`Node ${nodeVersion}`,'Install Node.js 22.12.0 or newer (stable release), reopen the terminal, then run npm ci.');
  for(const name of ['ffmpeg','ffprobe']){const result=command(name,['-version'],{env,cwd:root});check(name,true,result.ok,result.detail,'Install FFmpeg (including ffprobe) and add its executable directory to PATH.');}
  const cli=path.join(root,'node_modules/@remotion/cli/remotion-cli.js');
  const remotion=isFile(cli)?command(process.execPath,[cli,'versions'],{env,cwd:root}):{ok:false,detail:'Local Remotion CLI is missing.'};

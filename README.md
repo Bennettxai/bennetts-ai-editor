@@ -6,7 +6,7 @@ Media processing runs on your computer with Node, FFmpeg, optional whisper.cpp a
 
 ## Install and check
 
-Install **Node.js 22 or newer** and **FFmpeg**, including `ffprobe`, on PATH. On macOS, one option is `brew install node@22 ffmpeg`; follow Homebrew's PATH instructions for the selected Node version. On Linux/Windows use the respective Node and FFmpeg installation instructions.
+Install **Node.js 22.12.0 or newer (stable release)** and **FFmpeg**, including `ffprobe`, on PATH. On macOS, one option is `brew install node@22 ffmpeg`; follow Homebrew's PATH instructions for the selected Node version. On Linux/Windows use the respective Node and FFmpeg installation instructions.
 
 ```bash
 git clone https://github.com/Bennettxai/bennetts-ai-editor.git

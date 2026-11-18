@@ -12,7 +12,7 @@ React and other installed dependencies retain their published licenses. FFmpeg i
 
 ## Branding
 
-Bennett Legacy's monochrome palette is referenced from the public [FounderOS](https://github.com/Bennettxai/FounderOS) Legacy Monolith theme. No FounderOS application components are bundled. Bennett Legacy branding does not imply a trademark license.
+Earlier versions used Bennett Legacy's monochrome palette, referenced from the public [FounderOS](https://github.com/Bennettxai/FounderOS) Legacy Monolith theme. The current editor uses the [neutral slate theme](branding/README.md). No FounderOS application components are bundled. Bennett Legacy branding does not imply a trademark license.
 
 ## Your media
 

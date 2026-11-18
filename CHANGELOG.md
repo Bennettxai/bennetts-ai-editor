@@ -7,7 +7,7 @@
 - Added exact saved dialogue plans, identity/whole-word checks, narrowly reviewed boundary exceptions, versioned snapshots, source/output frame manifests and deliberate snapshot recovery. Changed dialogue requires archived clearing of dependent overlays.
 - Added separate take, cut-coverage and listening evidence. Heard media/receipts and measured reports bind exact artifacts; rerenders expire stale evidence. Technical checks do not certify human review.
 - Added doctor/status commands, portable dialogue/edit/review skills for Codex and Claude Code, complete local workflow/recovery documentation and CI with bounded real 4K/fractional renders.
-- Raised the Node floor to 22 and synchronized Remotion packages at 4.0.544, resolving the observed dependency advisory. Optional ASR test prerequisites now report explicit skips.
+- Raised the Node floor to 22.12.0 and synchronized Remotion packages at 4.0.544, resolving the observed dependency advisory. Optional ASR test prerequisites now report explicit skips.
 
 Projects, recordings, outputs and models remain local and ignored. No automatic semantic take selection, exhaustive acoustic certification, hosted services or publishing was added.
 

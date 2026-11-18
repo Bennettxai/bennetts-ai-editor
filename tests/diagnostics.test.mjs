@@ -10,11 +10,29 @@ try{diagnostics=await import('../scripts/doctor.mjs');}catch{}
 const requireApi=()=>assert.equal(typeof diagnostics?.diagnose,'function','doctor must expose dependency diagnostics');
 function fixture(){const dir=fs.mkdtempSync(path.join(os.tmpdir(),'editor-doctor-'));return {dir,cleanup:()=>fs.rmSync(dir,{recursive:true,force:true})};}
 
-test('doctor reports missing required commands and Node below 22 with remedies',()=>{
+test('doctor reports missing required commands and unsupported Node with remedies',()=>{
  requireApi();const f=fixture();try{
   const result=diagnostics.diagnose({root:f.dir,nodeVersion:'20.19.0',env:{PATH:f.dir},home:f.dir});
   assert.equal(result.ok,false);for(const name of ['node','ffmpeg','ffprobe','remotion']){assert.equal(result.checks[name].state,'unavailable');assert.ok(result.checks[name].remedy.length>10,name);}
   assert.equal(result.workflows.importedTranscript,false);assert.equal(result.workflows.localTranscription,false);
+ }finally{f.cleanup();}
+});
+for(const [nodeVersion,state] of [
+ ['22.0.0','unavailable'],['22.11.0','unavailable'],['22.11.99','unavailable'],
+ ['22.12.0','ready'],['22.12.1','ready'],['22.13.0','ready'],['24.0.0','ready'],
+])test(`doctor Node readiness respects the renderer minimum: ${nodeVersion} is ${state}`,()=>{
+ requireApi();const f=fixture();try{
+  const result=diagnostics.diagnose({root:f.dir,nodeVersion,env:{PATH:f.dir},home:f.dir});
+  assert.equal(result.checks.node.state,state);
+  if(state==='unavailable')assert.match(result.checks.node.remedy,/22\.12\.0/);
+ }finally{f.cleanup();}
+});
+test('doctor rejects incomplete, malformed and prerelease Node versions',()=>{
+ requireApi();const f=fixture();try{
+  for(const nodeVersion of ['22.12','22.12.x','22.12.0junk','022.12.0','22.012.0','22.12.00','22.12.0-rc.1','24.0.0-rc.1']){
+   const result=diagnostics.diagnose({root:f.dir,nodeVersion,env:{PATH:f.dir},home:f.dir});
+   assert.equal(result.checks.node.state,'unavailable',nodeVersion);
+  }
  }finally{f.cleanup();}
 });
 test('missing optional whisper and models do not block imported-transcript workflows',()=>{
