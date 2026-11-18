@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
+import {findModel,findWhisper} from '../scripts/doctor.mjs';
 
 const cli=path.resolve('scripts/editor.mjs');
 function fixture(seconds=6){
@@ -26,6 +27,17 @@ test('transcribe imports an existing word-level JSON into transcript.json',()=>{
   const result=run('transcribe','talk','--json',json);assert.equal(result.status,0,result.stderr);
   const t=read('transcript.json');assert.equal(t.words.length,7);assert.ok(t.silences.length>=3,'silences come from the audio');assert.equal(t.words[0].text,'Most');assert.equal(t.clock,'source');
   assert.notEqual(run('transcribe','talk','--json','missing.json').status,0);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('transcribe refuses a requested missing model or directory even when a default model exists',()=>{
+ const {dir,run,json}=fixture();
+ try{
+  fs.mkdirSync(path.join(dir,'models'));fs.writeFileSync(path.join(dir,'models/ggml-base.en.bin'),'default fixture');
+  for(const model of [path.join(dir,'missing.bin'),path.join(dir,'models')]){
+   const result=run('transcribe','talk','--model',model);assert.equal(result.status,1);assert.match(result.stderr,/requested model.*readable file/i);
+  }
+  const result=run('transcribe','talk','--json',json,'--model',path.join(dir,'missing.bin'));assert.equal(result.status,1);assert.match(result.stderr,/use.*--json.*--model/i);
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
 
@@ -68,9 +80,11 @@ test('captions --words builds grouped captions from the transcript; words prints
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
 
-test('transcribe runs local whisper.cpp end to end when it is installed',{skip:spawnSync('whisper-cli',['--help']).error?'whisper-cli not installed':false},()=>{
- const say=spawnSync('say',['--version']);
- if(say.error)return; // speech synthesis is only available on macOS
+test('transcribe runs local whisper.cpp end to end when ASR and a speech fixture are available',(t)=>{
+ let model;
+ try{findWhisper();model=findModel();}catch(error){t.skip(error.message);return;}
+ const speech=spawnSync('say',['-v','?']);
+ if(speech.error||speech.status!==0){t.skip('macOS say speech fixture is unavailable; local ASR was not exercised.');return;}
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'editor-whisper-'));
  try{
   const aiff=path.join(dir,'s.aiff'),mp4=path.join(dir,'s.mp4');
@@ -78,8 +92,7 @@ test('transcribe runs local whisper.cpp end to end when it is installed',{skip:s
   assert.equal(spawnSync('ffmpeg',['-v','error','-f','lavfi','-i','color=c=black:s=64x64:r=30','-i',aiff,'-shortest','-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac',mp4]).status,0);
   const run=(...args)=>spawnSync(process.execPath,[cli,...args],{cwd:dir,encoding:'utf8'});
   assert.equal(run('init','spoken','--input',mp4).status,0);
-  const result=run('transcribe','spoken');
-  if(/No whisper.cpp model/.test(result.stderr))return; // no model downloaded on this machine
+  const result=run('transcribe','spoken','--model',model);
   assert.equal(result.status,0,result.stderr);
   const t=JSON.parse(fs.readFileSync(path.join(dir,'projects/spoken/transcript.json'),'utf8'));
   assert.match(t.words.map(w=>w.text).join(' ').toLowerCase(),/one thing down/);

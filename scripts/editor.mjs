@@ -12,8 +12,12 @@ import {loudnormFilter,parseLoudnorm,MASTER} from '../src/audio.mjs';
 import {review} from './review.mjs';
 import {getFormat,parseFps} from '../src/format.mjs';
 import {probeSource,cfrInstruction} from './media.mjs';
+import {diagnose,formatDoctor,findModel,findWhisper} from './doctor.mjs';
+import {projectStatus,formatStatus} from './status.mjs';
 const root=process.cwd();
 const USAGE=`Usage:
+  npm run doctor -- [--json] [--model <ggml model>]
+  npm run status -- <slug> [--json]
   npm run init -- <slug> --input <video> [--resolution 4k|1080p] [--fps <integer-or-rational>]
   npm run transcribe -- <slug> [--json <whisper.json>] [--model <ggml model>]
   npm run cut -- <slug> [--plan <json>] [--max-pause 0.35] [--remove-fillers]
@@ -123,21 +127,10 @@ function init(slug,input,options={}){
 }
 
 // ---------- transcribe ----------
-function findModel(explicit){
- const candidates=[explicit,process.env.WHISPER_MODEL].filter(Boolean);
- for(const dir of [path.join(root,'models'),path.join(os.homedir(),'.whisper-models')]){
-  if(!fs.existsSync(dir))continue;
-  const found=fs.readdirSync(dir).filter(f=>/^ggml-.*\.bin$/.test(f));
-  const pick=['small.en','base.en','medium.en','small','base','medium','large'].map(n=>found.find(f=>f.includes(`-${n}`))).find(Boolean)??found[0];
-  if(pick)candidates.push(path.join(dir,pick));
- }
- const model=candidates.find(f=>fs.existsSync(f));
- if(!model)throw new Error('No whisper.cpp model found. Download one (see docs/TRANSCRIBE.md) into models/ or ~/.whisper-models/, pass --model, or import an existing transcript with --json.');
- return model;
-}
 function transcribe(slug,args){
  const edit=validateEdit(readEdit(slug));
  const json=flag(args,'--json');let words,engine;
+ if(json&&args.includes('--model'))throw new Error('Use either --json to import a transcript or --model for local ASR, not both.');
  if(json){
   if(!fs.existsSync(json))throw new Error(`Transcript JSON not found: ${json}`);
   words=parseTranscript(JSON.parse(fs.readFileSync(json,'utf8')));engine=`imported ${path.basename(json)}`;
@@ -147,8 +140,7 @@ function transcribe(slug,args){
   try{
    const wav=path.join(temp,'audio.wav');
    extractWav(mediaPath(root,edit.source),wav);
-   const bin=['whisper-cli','whisper-cpp','main'].find(b=>!spawnSync(b,['--help']).error);
-   if(!bin)throw new Error('whisper.cpp is not installed (whisper-cli). See docs/TRANSCRIBE.md, or import a transcript with --json.');
+   const bin=findWhisper();
    console.log(`Transcribing with ${bin} and ${path.basename(model)}…`);
    execute(bin,['-m',model,'-f',wav,'-ojf','-of',path.join(temp,'out'),'-np']);
    words=parseTranscript(JSON.parse(fs.readFileSync(path.join(temp,'out.json'),'utf8')));engine=`whisper.cpp ${path.basename(model)}`;
@@ -282,7 +274,12 @@ function demo(){
 
 try{
  const [command,slug,...args]=process.argv.slice(2);
- if(command==='init')init(slug,flag(args,'--input'),{fps:flag(args,'--fps'),resolution:flag(args,'--resolution')});
+ if(command==='doctor'){
+  const options=[slug,...args].filter(x=>x!==undefined);
+  const result=diagnose({root,model:flag(options,'--model')});console.log(options.includes('--json')?JSON.stringify(result,null,2):formatDoctor(result));if(!result.ok)process.exitCode=1;
+ }
+ else if(command==='status'){const result=projectStatus(root,slug);console.log(args.includes('--json')?JSON.stringify(result,null,2):formatStatus(result));if(!result.ok)process.exitCode=1;}
+ else if(command==='init')init(slug,flag(args,'--input'),{fps:flag(args,'--fps'),resolution:flag(args,'--resolution')});
  else if(command==='transcribe')transcribe(slug,args);
  else if(command==='cut')cut(slug,args);
  else if(command==='dialogue')dialogue(slug,args);

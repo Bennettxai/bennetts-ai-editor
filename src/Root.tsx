@@ -19,7 +19,7 @@ const Card:React.FC<{text:string;instant?:boolean;durationInFrames?:number}>=({t
  const drift=interpolate(frame,[0,durationInFrames],[1,1.03],{extrapolateLeft:'clamp',extrapolateRight:'clamp'}); // holds never freeze
  const opacity=instant?1:interpolate(frame,[0,motionFrames(7,fps)],[0,1],{extrapolateLeft:'clamp',extrapolateRight:'clamp'});
  return <AbsoluteFill style={{background:tokens.background,justifyContent:'center',transform:`scale(${drift})`,padding:`${SAFE.top}px ${1080-SAFE.right}px ${1920-SAFE.bottom}px ${SAFE.left+30}px`,opacity}}>
-  <div style={{fontFamily:fonts.mono,fontSize:23,letterSpacing:5,color:tokens.secondary,marginBottom:40}}>BENNETT LEGACY</div>
+  <div style={{fontFamily:fonts.mono,fontSize:23,letterSpacing:5,color:tokens.secondary,marginBottom:40}}>AI VIDEO EDITOR</div>
   <div style={{width:96,height:3,background:tokens.paper,marginBottom:48}}/>
   <div style={{fontSize:94,fontWeight:750,lineHeight:1.08,letterSpacing:-4,overflowWrap:'anywhere'}}>{text}</div>
   <div style={{marginTop:65,paddingTop:28,borderTop:`1px solid ${tokens.line}`,fontSize:22,color:tokens.muted,fontFamily:fonts.mono}}>ONE IDEA AT A TIME.</div>
@@ -58,7 +58,6 @@ const Editor:React.FC<Props>=({edit,guides})=>{
    <AbsoluteFill style={{background:'linear-gradient(180deg, rgba(0,0,0,.48), transparent 26%, transparent 65%, rgba(0,0,0,.5))',opacity:1-split}}/>
   </div>
   {split>0&&<div style={{position:'absolute',left:0,right:0,top:rect.top,borderTop:`1px solid ${tokens.line}`}}/>}
-  <div style={{position:'absolute',left:72,right:72,top:90,fontFamily:fonts.mono,fontSize:22,letterSpacing:4,textShadow:'0 2px 8px black'}}>BENNETT LEGACY</div>
   {/* The visual zone ends where the footage begins, so footage sliding up wipes the scene away. */}
   <div style={{position:'absolute',left:0,right:0,top:0,height:rect.top,overflow:'hidden'}}>
    {visuals.map((visual,index)=>{const from=frames(visual.start),len=frames(visual.end)-from;return <Sequence key={index} from={from} durationInFrames={len}>
@@ -72,7 +71,7 @@ const Editor:React.FC<Props>=({edit,guides})=>{
   {(edit.sfx??[]).map((cue,index)=><Sequence key={index} from={frames(cue.start)} durationInFrames={Math.max(1,total-frames(cue.start))}><Audio src={staticFile(cue.src)} volume={cue.volume??0.25}/></Sequence>)}
  </AbsoluteFill>;
 };
-const sample:Edit={title:"Bennett’s AI Editor",source:'',clips:[{start:0,end:3}],cards:[{start:0,end:3,text:'Your next video starts here.'}]};
+const sample:Edit={title:"AI Video Editor",source:'',clips:[{start:0,end:3}],cards:[{start:0,end:3,text:'Your next video starts here.'}]};
 const Welcome:React.FC=()=><AbsoluteFill style={{background:tokens.background,color:tokens.paper,fontFamily:fonts.sans}}><Card text='Your next video starts here.' instant/></AbsoluteFill>;
 export const Root:React.FC=()=><>
  <Composition id='Welcome' component={Welcome} width={1080} height={1920} fps={FPS} durationInFrames={90}/>

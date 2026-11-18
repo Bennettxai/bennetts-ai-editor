@@ -2,8 +2,8 @@ import React from 'react';
 import {Easing,interpolate,useCurrentFrame,useVideoConfig} from 'remotion';
 import {motionFrames,relativeFrame,revealFrame} from '../format.mjs';
 
-// Bennett Legacy tokens. Change these (and branding/README.md) to restyle every scene at once.
-export const tokens={background:'#0a0a0a',surface:'#141414',paper:'#f2f2f2',secondary:'#9c9c9c',muted:'#5c5c5c',line:'#242424',dim:'#3a3a3a'};
+// Neutral editor tokens. Change these (and branding/README.md) to restyle every scene at once.
+export const tokens={background:'#101418',surface:'#1b2229',paper:'#f5f7fa',secondary:'#aab4c0',muted:'#84909d',line:'#303a45',dim:'#495665'};
 export const fonts={sans:'Inter, "Helvetica Neue", Arial, sans-serif',mono:'"SF Mono", Menlo, Consolas, monospace',serif:'Georgia, "Times New Roman", serif'};
 export const FPS=30;
 
