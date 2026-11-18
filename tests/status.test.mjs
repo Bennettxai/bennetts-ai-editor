@@ -41,3 +41,14 @@ test('status gives structured failures for malformed edit/transcript, missing me
   fs.rmSync(path.join(f.dir,'edit.json'));r=f.get();assert.equal(r.status.import.state,'missing');assert.ok(r.status.nextSteps.some(x=>x.includes('npm run init')));
  }finally{f.cleanup();}
 });
+
+for(const [name,gate] of [['null',null],['invalid state',{state:'approved',evidence:'Original evidence must be preserved'}]]){
+ test(`status JSON fails safely for a saved review gate with ${name}`,()=>{
+  const f=fixture();try{
+   f.transcript();snapshotDialogue(f.root,'talk',f.edit,{sourceDuration:2});
+   const file=path.join(f.dir,'dialogue/v001/review.json'),review=JSON.parse(fs.readFileSync(file));review.gates.takeSelection=gate;fs.writeFileSync(file,JSON.stringify(review));const before=fs.readFileSync(file,'utf8');
+   const {exit,status}=f.get();assert.equal(exit,1);assert.equal(status.ok,false);assert.equal(status.dialogue.integrity,'stale');assert.equal(status.dialogue.gates,null);assert.match(status.issues.join(' '),/review\.json.*restore/i);
+   const plain=f.run();assert.equal(plain.status,1);assert.match(plain.stdout,/review\.json/);assert.equal(plain.stderr,'');assert.equal(fs.readFileSync(file,'utf8'),before,'status preserves malformed saved evidence');
+  }finally{f.cleanup();}
+ });
+}

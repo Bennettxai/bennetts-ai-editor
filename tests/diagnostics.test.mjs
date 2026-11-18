@@ -20,7 +20,9 @@ test('doctor reports missing required commands and Node below 22 with remedies',
 test('missing optional whisper and models do not block imported-transcript workflows',()=>{
  requireApi();const f=fixture();try{
   for(const bin of ['ffmpeg','ffprobe']){const found=spawnSync('/usr/bin/which',[bin],{encoding:'utf8'}).stdout.trim();fs.symlinkSync(found,path.join(f.dir,bin));}
-  const result=diagnostics.diagnose({root,env:{PATH:f.dir},home:f.dir});
+  fs.symlinkSync(path.join(root,'node_modules'),path.join(f.dir,'node_modules'));
+  fs.copyFileSync(path.join(root,'package.json'),path.join(f.dir,'package.json'));
+  const result=diagnostics.diagnose({root:f.dir,env:{PATH:f.dir},home:f.dir});
   assert.equal(result.ok,true,JSON.stringify(result));assert.equal(result.workflows.importedTranscript,true);assert.equal(result.workflows.localTranscription,false);
   assert.equal(result.checks.whisper.state,'unavailable');assert.equal(result.checks.model.state,'unavailable');
  }finally{f.cleanup();}

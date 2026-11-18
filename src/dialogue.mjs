@@ -63,8 +63,10 @@ function revisionStatus(root,slug,edit){
   const revision=currentRevision(root,slug);if(!revision)return {revision:null,integrity:'legacy',issues:[],gates:null};
   const actual=identity(root,slug,edit),issues=[];
   for(const key of Object.keys(actual))if(actual[key]!==revision.receipt.identity[key])issues.push(`${key} changed`);
-  const review=read(path.join(revision.dir,'review.json'));
-  return {revision:revision.current.revision,integrity:issues.length?'stale':'current',issues,gates:review.gates};
+  const reviewFile=path.join(revision.dir,'review.json'),review=read(reviewFile),gates=review?.gates;
+  const gateNames=['technical',...HUMAN_GATES],object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
+  if(!object(gates)||gateNames.some(name=>!object(gates[name])||!['pending','pass','fail'].includes(gates[name].state))||Object.keys(gates).some(name=>!gateNames.includes(name)))throw new Error(`Malformed saved review gates in ${path.relative(root,reviewFile)}. Preserve the file and restore valid review evidence from reviews/ or a backup before retrying; each gate needs state pending, pass or fail.`);
+  return {revision:revision.current.revision,integrity:issues.length?'stale':'current',issues,gates};
  }catch(error){return {revision:null,integrity:'stale',issues:[error.message],gates:null};}
 }
 export function dialogueStatus(root,slug,edit){
