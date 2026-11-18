@@ -34,7 +34,19 @@ function identity(root,slug,edit){
  const {transcript}=paths(root,slug);
  return {source:edit.source,sourceSha256:fileSha256(mediaPath(root,edit.source)),transcriptSha256:fs.existsSync(transcript)?fileSha256(transcript):null,baseClipsSha256:hash(clipsKey(edit)),fps:getFormat(edit).fpsRatio};
 }
-function sourceWords(root,slug){const file=paths(root,slug).transcript;if(!fs.existsSync(file))throw new Error(`No transcript. Run npm run transcribe -- ${slug} first.`);const t=read(file);if(t.clock&&t.clock!=='source')throw new Error('transcript.json must use the source clock.');return parseTranscript(t);}
+function parseSourceWords(bytes){const t=JSON.parse(bytes.toString('utf8'));if(t.clock&&t.clock!=='source')throw new Error('transcript.json must use the source clock.');return parseTranscript(t);}
+function sourceWords(root,slug){const file=paths(root,slug).transcript;if(!fs.existsSync(file))throw new Error(`No transcript. Run npm run transcribe -- ${slug} first.`);return parseSourceWords(fs.readFileSync(file));}
+function pointerSha(root,slug){const file=path.join(paths(root,slug).dialogue,'current.json');return fs.existsSync(file)?fileSha256(file):null;}
+function captureRevisionInputs(root,slug,edit){
+ const p=paths(root,slug),transcriptBytes=fs.readFileSync(p.transcript),inputIdentity=identity(root,slug,edit);
+ const inputs={identity:inputIdentity,editSha256:hash(edit),transcriptBytes,words:parseSourceWords(transcriptBytes),pointerSha256:pointerSha(root,slug)};
+ if(crypto.createHash('sha256').update(transcriptBytes).digest('hex')!==inputIdentity.transcriptSha256)throw new Error('Transcript changed while reading dialogue inputs. Retry after reviewing the change.');
+ assertRevisionInputs(root,slug,edit,inputs);return inputs;
+}
+function assertRevisionInputs(root,slug,edit,inputs){
+ if(hash(identity(root,slug,edit))!==hash(inputs.identity)||hash(read(paths(root,slug).edit))!==inputs.editSha256||pointerSha(root,slug)!==inputs.pointerSha256)throw new Error('Dialogue inputs or working edit changed during the transaction. Review the concurrent change and retry; no new revision can be published.');
+}
+
 function currentRevision(root,slug){
  const {dialogue}=paths(root,slug),pointer=path.join(dialogue,'current.json');
  if(!fs.existsSync(pointer))return null;
@@ -44,7 +56,7 @@ function currentRevision(root,slug){
  for(const [file,expected] of Object.entries(receipt.files))if(path.basename(file)!==file||fileSha256(path.join(dir,file))!==expected)throw new Error(`Dialogue snapshot changed: ${file}`);
  return {current,dir,receipt};
 }
-export function dialogueStatus(root,slug,edit){
+function revisionStatus(root,slug,edit){
  try{
   const {dialogue}=paths(root,slug);
   if(fs.existsSync(path.join(dialogue,'.lock')))return {revision:null,integrity:'stale',issues:['Dialogue transaction is locked or interrupted; inspect dialogue/.lock and revision files before removing the lock.'],gates:null};
@@ -54,6 +66,15 @@ export function dialogueStatus(root,slug,edit){
   const review=read(path.join(revision.dir,'review.json'));
   return {revision:revision.current.revision,integrity:issues.length?'stale':'current',issues,gates:review.gates};
  }catch(error){return {revision:null,integrity:'stale',issues:[error.message],gates:null};}
+}
+export function dialogueStatus(root,slug,edit){
+ const status=revisionStatus(root,slug,edit),gate=status.gates?.listening;
+ if(gate&&gate.state!=='pending'){
+  const issues=dependencyIssues(root,slug,edit,gate.media??{},new Set());
+  if(!gate.media?.receiptSha256)issues.push('Listening evidence has no captured render receipt; review the current file again.');
+  if(issues.length)status.gates={...status.gates,listening:{...gate,state:'pending',recordedState:gate.state,issues}};
+ }
+ return status;
 }
 export function assertDialogueIntegrity(root,slug,edit){
  const status=dialogueStatus(root,slug,edit);
@@ -115,7 +136,7 @@ function buildNext(edit,clips,words,invalidates,options){
  const next={...edit,clips,captionStyle:'word',...(invalidates&&options.clearOverlays?{cards:[],visuals:[],sfx:[]}: {})};
  const mapped=manifestFor(next,words);next.captions=captionsFromWords(mapped.output.words,durationFrames(next)/getFormat(next).fps,{fps:getFormat(next).fps});return validateEdit(next);
 }
-function commitRevision(root,slug,before,next,plan,kind){
+function commitRevision(root,slug,before,next,plan,kind,inputs){
  const p=paths(root,slug);fs.mkdirSync(p.dialogue,{recursive:true});
  const lock=path.join(p.dialogue,'.lock');let lockFd;
  try{lockFd=fs.openSync(lock,'wx');}catch{throw new Error('Dialogue transaction already locked; inspect dialogue/.lock before retrying.');}
@@ -123,14 +144,15 @@ function commitRevision(root,slug,before,next,plan,kind){
  let dir,temp,keepLock=false;const backups=new Map();
  const preserve=file=>{if(!backups.has(file))backups.set(file,fs.existsSync(file)?fs.readFileSync(file):null);};
  try{
+  assertRevisionInputs(root,slug,before,inputs);
   const previous=currentRevision(root,slug);
   const nums=fs.readdirSync(p.dialogue).filter(x=>/^v\d{3,}$/.test(x)).map(x=>Number(x.slice(1)));
   const revision=`v${String(Math.max(0,...nums)+1).padStart(3,'0')}`;dir=path.join(p.dialogue,revision);temp=path.join(p.dialogue,`.${revision}-${crypto.randomUUID()}`);fs.mkdirSync(temp);
   const nativeFile=path.join(p.project,'source.probe.json'),nativeFps=fs.existsSync(nativeFile)?read(nativeFile).video?.fpsRatio:null;
-  const {manifest,output}=manifestFor(next,sourceWords(root,slug),nativeFps);output.revision=revision;
+  const {manifest,output}=manifestFor(next,inputs.words,nativeFps);output.revision=revision;
   const snapshot={'edit.before.json':before,'edit.after.json':next,'plan.json':plan,'manifest.json':manifest,'transcript.output.json':output};
   for(const [name,value] of Object.entries(snapshot))fs.writeFileSync(path.join(temp,name),encode(value));
-  fs.copyFileSync(p.transcript,path.join(temp,'transcript.source.json'));
+  fs.writeFileSync(path.join(temp,'transcript.source.json'),inputs.transcriptBytes);
   const archive=path.join(temp,'archive');fs.mkdirSync(archive);
   for(const name of DEPENDENTS){const file=path.join(p.project,name);if(fs.existsSync(file))fs.copyFileSync(file,path.join(archive,name));}
   if(previous)for(const name of ['edit.after.json','transcript.source.json','review.json'])fs.copyFileSync(path.join(previous.dir,name),path.join(archive,`previous.${name}`));
@@ -139,14 +161,16 @@ function commitRevision(root,slug,before,next,plan,kind){
   const gates={technical:{state:'pass',evidence:'Validated identity, whole-frame ranges, full-word preservation or explicit exceptions, contiguous frame mapping and edit schema.'},...Object.fromEntries(HUMAN_GATES.map(k=>[k,{state:'pending',evidence:null}]))};
   fs.writeFileSync(path.join(temp,'review.json'),encode({revision,gates}));
   const files=Object.fromEntries([...Object.keys(snapshot),'transcript.source.json'].map(name=>[name,fileSha256(path.join(temp,name))]));
-  const receipt={schemaVersion:1,revision,kind,createdAt:new Date().toISOString(),previousRevision:previous?.current.revision??null,identity:identity(root,slug,next),files};
+  const receipt={schemaVersion:1,revision,kind,createdAt:new Date().toISOString(),previousRevision:previous?.current.revision??null,identity:{...inputs.identity,baseClipsSha256:hash(clipsKey(next)),fps:getFormat(next).fpsRatio},files};
   fs.writeFileSync(path.join(temp,'receipt.json'),encode(receipt));
   // Publish a complete snapshot first, then atomically replace each working file and the pointer last.
   // A killed process leaves the lock: integrity checks fail closed until the transaction is inspected.
+  assertRevisionInputs(root,slug,before,inputs);
   fs.renameSync(temp,dir);temp=null;
   for(const file of [p.edit,...DEPENDENTS.map(name=>path.join(p.project,name)),path.join(p.dialogue,'current.json')])preserve(file);
   atomicWrite(p.edit,next);for(const name of DEPENDENTS)fs.rmSync(path.join(p.project,name),{force:true});
   atomicWrite(path.join(p.project,'words.output.json'),{...output,identity:receipt.identity});
+  assertRevisionInputs(root,slug,next,{...inputs,identity:receipt.identity,editSha256:hash(next)});
   atomicWrite(path.join(p.dialogue,'current.json'),{revision,receiptSha256:hash(receipt)});
   return next;
  }catch(error){
@@ -160,19 +184,19 @@ function commitRevision(root,slug,before,next,plan,kind){
 export function applyProposal(root,slug,edit,plan,options={}){
  assertDialogueIntegrity(root,slug,edit);
  if(plan?.schemaVersion!==1||plan.kind!=='dialogue-cut-plan'||!plan.identity)throw new Error('Anonymous or legacy cut plan: generate a new identity-bound proposal with npm run cut.');
- const actual=identity(root,slug,edit);for(const key of Object.keys(actual))if(actual[key]!==plan.identity[key])throw new Error(`Cut plan ${key} does not match current project. Generate and review a new proposal.`);
- const words=sourceWords(root,slug),clips=validateRanges(edit,plan.clips,words,options.sourceDuration,plan.partialWordExceptions,edit.clips);
+ const inputs=captureRevisionInputs(root,slug,edit),actual=inputs.identity;for(const key of Object.keys(actual))if(actual[key]!==plan.identity[key])throw new Error(`Cut plan ${key} does not match current project. Generate and review a new proposal.`);
+ const words=inputs.words,clips=validateRanges(edit,plan.clips,words,options.sourceDuration,plan.partialWordExceptions,edit.clips);
  const next=buildNext(edit,clips,words,clockKey(edit)!==clockKey({...edit,clips}),options);
- return commitRevision(root,slug,edit,next,plan,'cut');
+ return commitRevision(root,slug,edit,next,plan,'cut',inputs);
 }
 export function snapshotDialogue(root,slug,edit,options={}){
- const previous=currentRevision(root,slug),words=sourceWords(root,slug);
+ const inputs=captureRevisionInputs(root,slug,edit),previous=currentRevision(root,slug),words=inputs.words;
  const clips=validateRanges(edit,edit.clips,words,options.sourceDuration,options.partialWordExceptions??[]);
- const currentIdentity=identity(root,slug,edit),prior=previous?.receipt.identity;
+ const currentIdentity=inputs.identity,prior=previous?.receipt.identity;
  if(prior&&(prior.source!==currentIdentity.source||prior.sourceSha256!==currentIdentity.sourceSha256))throw new Error('Source media changed. Restore the original source, or import the replacement as a new project; --snapshot adopts only timeline/transcript changes.');
  const invalidates=previous?(clockKey(read(path.join(previous.dir,'edit.after.json')))!==clockKey(edit)||prior.sourceSha256!==currentIdentity.sourceSha256||prior.transcriptSha256!==currentIdentity.transcriptSha256):true;
  const next=buildNext(edit,clips,words,invalidates,options);
- return commitRevision(root,slug,edit,next,{kind:'manual-snapshot',partialWordExceptions:options.partialWordExceptions??[]},'snapshot');
+ return commitRevision(root,slug,edit,next,{kind:'manual-snapshot',partialWordExceptions:options.partialWordExceptions??[]},'snapshot',inputs);
 }
 export function recordDialogueReview(root,slug,edit,input){
  const status=assertDialogueIntegrity(root,slug,edit);if(!status.revision)throw new Error('Create a dialogue revision before recording review evidence.');
@@ -186,25 +210,47 @@ export function recordDialogueReview(root,slug,edit,input){
    if(!gate.media||typeof gate.media.path!=='string'||!gate.media.sha256||fileSha256(path.resolve(root,gate.media.path))!==gate.media.sha256)throw new Error('Listening evidence needs media.path and matching media.sha256 for the file actually heard.');
    if(artifactStatus(root,slug,edit,path.resolve(root,gate.media.path)).state!=='current')throw new Error('Listening evidence must reference a current rendered file with its matching receipt; old or unverified renders cannot certify this revision.');
   }
-  review.gates[name]={...gate,reviewer:input.reviewer,reviewedAt:input.reviewedAt};
+  review.gates[name]={...gate,...(name==='listening'&&gate.state!=='pending'?{media:{...gate.media,receiptSha256:fileSha256(`${path.resolve(root,gate.media.path)}.receipt.json`)}}:{}),reviewer:input.reviewer,reviewedAt:input.reviewedAt};
  }
  const history=path.join(current.dir,'reviews');fs.mkdirSync(history,{recursive:true});
  const name=`${Date.now()}-${crypto.randomUUID()}.json`;atomicWrite(path.join(history,name),input);atomicWrite(path.join(current.dir,'review.json'),review);return review;
 }
 export function artifactIdentity(root,slug,edit){return {...identity(root,slug,edit),editSha256:hash(edit),revision:currentRevision(root,slug)?.current.revision??null};}
-export function writeArtifactReceipt(root,slug,edit,file,{expectedIdentity}={}){
+export function writeArtifactReceipt(root,slug,edit,file,{expectedIdentity,dependencies=[]}={}){
  assertDialogueIntegrity(root,slug,edit);const currentIdentity=artifactIdentity(root,slug,edit);
  if((expectedIdentity&&hash(expectedIdentity)!==hash(currentIdentity))||hash(read(paths(root,slug).edit))!==hash(edit))throw new Error('Project dependencies changed during the render/review. Re-run it against the current project before recording a receipt.');
- const receipt={schemaVersion:1,createdAt:new Date().toISOString(),identity:currentIdentity,outputSha256:fileSha256(file)};
+ const receipt={schemaVersion:1,createdAt:new Date().toISOString(),identity:currentIdentity,outputSha256:fileSha256(file),dependencies};
+ const issues=dependencies.flatMap(dependency=>dependencyIssues(root,slug,edit,dependency,new Set([path.resolve(file)])));
+ if(issues.length)throw new Error(`Reviewed artifact dependency changed: ${issues.join('; ')}`);
  atomicWrite(`${file}.receipt.json`,receipt);return receipt;
 }
-export function artifactStatus(root,slug,edit,file){
+function artifactState(root,slug,edit,file,seen){
+ const absolute=path.resolve(file);if(seen.has(absolute))return {state:'stale',issues:['Artifact receipt dependency cycle.']};seen=new Set([...seen,absolute]);
  if(!fs.existsSync(file))return {state:'missing',issues:[]};
  if(!fs.existsSync(`${file}.receipt.json`))return {state:'unverified',issues:['No render receipt for existing file.']};
  try{
-  const receipt=read(`${file}.receipt.json`),status=dialogueStatus(root,slug,edit),issues=[...status.issues];
+  const receipt=read(`${file}.receipt.json`),status=revisionStatus(root,slug,edit),issues=[...status.issues];
   if(hash(receipt.identity)!==hash(artifactIdentity(root,slug,edit)))issues.push('Render dependencies changed.');
   if(receipt.outputSha256!==fileSha256(file))issues.push('Output file bytes changed.');
+  for(const dependency of receipt.dependencies??[])issues.push(...dependencyIssues(root,slug,edit,dependency,seen));
   return {state:issues.length?'stale':'current',issues,createdAt:receipt.createdAt};
  }catch(error){return {state:'stale',issues:[error.message]};}
+}
+
+function dependencyIssues(root,slug,edit,dependency,seen){
+ try{
+  if(typeof dependency.path!=='string'||!dependency.sha256)throw new Error('Artifact dependency needs path and sha256.');
+  const file=path.resolve(root,dependency.path),issues=[];
+  if(fileSha256(file)!==dependency.sha256)issues.push(`Reviewed media bytes changed: ${dependency.path}`);
+  const receiptHash=fs.existsSync(`${file}.receipt.json`)?fileSha256(`${file}.receipt.json`):null;
+  if(receiptHash!==dependency.receiptSha256)issues.push(`Reviewed media receipt changed: ${dependency.path}`);
+  if(receiptHash){const state=artifactState(root,slug,edit,file,seen);if(state.state!=='current')issues.push(`Reviewed media is ${state.state}: ${state.issues.join('; ')}`);}
+  return issues;
+ }catch(error){return [error.message];}
+}
+export function artifactStatus(root,slug,edit,file){return artifactState(root,slug,edit,file,new Set());}
+export function captureArtifactDependency(root,slug,edit,file){
+ const status=artifactStatus(root,slug,edit,file);if(!['current','unverified'].includes(status.state))throw new Error(`Cannot capture ${status.state} reviewed artifact: ${status.issues.join('; ')}`);
+ const dependency={path:path.relative(root,file),sha256:fileSha256(file),receiptSha256:fs.existsSync(`${file}.receipt.json`)?fileSha256(`${file}.receipt.json`):null};
+ const issues=dependencyIssues(root,slug,edit,dependency,new Set());if(issues.length)throw new Error(`Reviewed artifact changed while capturing: ${issues.join('; ')}`);return dependency;
 }

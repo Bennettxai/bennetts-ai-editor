@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
+import {writeArtifactReceipt,artifactStatus,fileSha256} from '../src/dialogue.mjs';
 const cli=path.resolve('scripts/editor.mjs');
 function fixture(){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'dialogue-cli-')),input=path.join(root,'source.mp4');
@@ -43,5 +44,21 @@ test('corrected transcript adoption clears stale in-bounds overlays only on expl
   const t=f.read('transcript.json');t.words[0].text='Corrected';f.write('transcript.json',t);
   let r=f.run('dialogue','talk','--snapshot');assert.notEqual(r.status,0);assert.match(r.stderr,/clear-overlays/);assert.deepEqual(f.read('edit.json'),edit);
   r=f.run('dialogue','talk','--snapshot','--clear-overlays');assert.equal(r.status,0,r.stderr);assert.deepEqual(f.read('edit.json').cards,[]);assert.equal(f.read('edit.json').captions[0].text,'CORRECTED');
+ }finally{f.cleanup();}
+});
+
+test('CLI review binds exact media and dialogue status expires prior listening on replacement',()=>{
+ const f=fixture();try{
+  f.run('cut','talk');assert.equal(f.run('cut','talk','--apply').status,0);const edit=f.read('edit.json');
+  const output=path.join(f.root,'output/drafts/talk.mp4');fs.mkdirSync(path.dirname(output),{recursive:true});fs.copyFileSync(path.join(f.root,'public/projects/talk/input.mp4'),output);writeArtifactReceipt(f.root,'talk',edit,output);
+  let result=f.run('review','talk','--draft');assert.equal(result.status,0,result.stderr);
+  const report=path.join(f.root,'output/review/talk-draft/report.json'),receipt=JSON.parse(fs.readFileSync(`${report}.receipt.json`));
+  assert.equal(receipt.dependencies?.[0]?.sha256,fileSha256(output));assert.equal(receipt.dependencies[0].receiptSha256,fileSha256(`${output}.receipt.json`));
+  const evidence={revision:'v001',reviewer:'Synthetic test',reviewedAt:'2026-11-17T12:00:00Z',gates:{listening:{state:'pass',evidence:'Test fixture attestation only',media:{path:'output/drafts/talk.mp4',sha256:fileSha256(output)}}}};
+  const reviewFile=path.join(f.root,'evidence.json');fs.writeFileSync(reviewFile,JSON.stringify(evidence));result=f.run('dialogue','talk','--review',reviewFile);assert.equal(result.status,0,result.stderr);
+  assert.equal(f.read('dialogue/v001/review.json').gates.listening.state,'pass');
+  fs.appendFileSync(output,'changed output');writeArtifactReceipt(f.root,'talk',edit,output);
+  assert.equal(artifactStatus(f.root,'talk',edit,output).state,'current');assert.equal(artifactStatus(f.root,'talk',edit,report).state,'stale');
+  result=f.run('dialogue','talk');assert.equal(result.status,0,result.stderr);assert.match(result.stdout,/listening: pending/);assert.equal(f.read('dialogue/v001/review.json').gates.listening.state,'pass');
  }finally{f.cleanup();}
 });

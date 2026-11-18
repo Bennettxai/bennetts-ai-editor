@@ -7,7 +7,7 @@ import {safeSlug,validateEdit,lintEdit,durationFrames,mediaPath} from '../src/ed
 import {parseSrt,mapCaptions,captionsFromWords} from '../src/captions.mjs';
 import {parseTranscript,parseSilences,silenceThreshold,noiseFloor,refineWords} from '../src/transcript.mjs';
 import {proposeCuts} from '../src/cuts.mjs';
-import {createProposal,applyProposal,snapshotDialogue,recordDialogueReview,dialogueStatus,assertDialogueIntegrity,dialogueOutput,writeArtifactReceipt,artifactStatus,artifactIdentity} from '../src/dialogue.mjs';
+import {createProposal,applyProposal,snapshotDialogue,recordDialogueReview,dialogueStatus,assertDialogueIntegrity,dialogueOutput,writeArtifactReceipt,artifactStatus,artifactIdentity,captureArtifactDependency} from '../src/dialogue.mjs';
 import {loudnormFilter,parseLoudnorm,MASTER} from '../src/audio.mjs';
 import {review} from './review.mjs';
 import {getFormat,parseFps} from '../src/format.mjs';
@@ -300,9 +300,10 @@ try{
   const status=artifactStatus(root,slug,edit,file),dialogueState=printDialogueStatus(slug);
   if(status.state==='stale'||(dialogueState.revision&&status.state==='unverified'))throw new Error(`Cannot review ${status.state} render: ${status.issues.join('; ')}. Render the current edit first.`);
   if(status.state==='unverified')console.warn('Legacy render has no receipt; this technical review cannot establish its source/edit identity.');
+  const expectedIdentity=artifactIdentity(root,slug,edit),reviewedMedia=captureArtifactDependency(root,slug,edit,file);
   const report=review(root,slug,{draft,edit});
   const reportFile=path.join(root,'output/review',draft?`${slug}-draft`:slug,'report.json');
-  writeJson(reportFile,{...report,artifact:status,dialogue:dialogueState});writeArtifactReceipt(root,slug,edit,reportFile);
+  writeJson(reportFile,{...report,artifact:status,dialogue:dialogueState,reviewedMedia});writeArtifactReceipt(root,slug,edit,reportFile,{expectedIdentity,dependencies:[reviewedMedia]});
  }
  else if(command==='demo')demo();
  else throw new Error(USAGE);

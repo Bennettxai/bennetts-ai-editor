@@ -158,3 +158,47 @@ test('failed rollback retains its lock so a partially committed revision cannot 
   assert.throws(()=>f.apply(f.plan()),/recover|rollback|interrupted/i);assert.equal(fs.existsSync(path.join(f.dir,'dialogue/.lock')),true);assert.equal(api.dialogueStatus(f.root,'talk',f.read('edit.json')).integrity,'stale');
  }finally{f.cleanup();}
 });
+test('same-revision rerender invalidates effective listening but preserves the submitted evidence',()=>{
+ const f=fixture();try{
+  const next=f.apply(f.plan()),file=path.join(f.root,'draft.mp4');fs.writeFileSync(file,'first draft');api.writeArtifactReceipt(f.root,'talk',next,file);
+  api.recordDialogueReview(f.root,'talk',next,{revision:'v001',reviewer:'Test listener',reviewedAt:'2026-11-17T12:00:00Z',gates:{listening:{state:'pass',evidence:'Synthetic test attestation',media:{path:'draft.mp4',sha256:api.fileSha256(file)}}}});
+  assert.equal(api.dialogueStatus(f.root,'talk',next).gates.listening.state,'pass','current evidence must evaluate without recursion');
+  const historical=f.read('dialogue/v001/review.json');fs.writeFileSync(file,'second draft');api.writeArtifactReceipt(f.root,'talk',next,file);
+  assert.equal(api.artifactStatus(f.root,'talk',next,file).state,'current');
+  const effective=api.dialogueStatus(f.root,'talk',next).gates.listening;assert.equal(effective.state,'pending');assert.equal(effective.recordedState,'pass');assert.match(effective.issues.join(' '),/changed|match/i);
+  assert.deepEqual(f.read('dialogue/v001/review.json'),historical);
+ }finally{f.cleanup();}
+});
+test('effective listening also expires when the heard receipt is replaced with identical output bytes',()=>{
+ const f=fixture();try{
+  const next=f.apply(f.plan()),file=path.join(f.root,'draft.mp4');fs.writeFileSync(file,'draft');api.writeArtifactReceipt(f.root,'talk',next,file);
+  api.recordDialogueReview(f.root,'talk',next,{revision:'v001',reviewer:'Listener',reviewedAt:'2026-11-17T12:00:00Z',gates:{listening:{state:'pass',evidence:'Test evidence',media:{path:'draft.mp4',sha256:api.fileSha256(file)}}}});
+  const receipt=JSON.parse(fs.readFileSync(`${file}.receipt.json`));receipt.createdAt='2026-11-17T13:00:00Z';json(`${file}.receipt.json`,receipt);
+  assert.equal(api.artifactStatus(f.root,'talk',next,file).state,'current');assert.equal(api.dialogueStatus(f.root,'talk',next).gates.listening.state,'pending');
+ }finally{f.cleanup();}
+});
+test('technical report currency binds the exact reviewed media and its receipt',()=>{
+ assert.equal(typeof api.captureArtifactDependency,'function','review must capture its input artifact');
+ const f=fixture();try{
+  const next=f.apply(f.plan()),file=path.join(f.root,'draft.mp4'),report=path.join(f.root,'report.json');fs.writeFileSync(file,'draft');api.writeArtifactReceipt(f.root,'talk',next,file);
+  const dependency=api.captureArtifactDependency(f.root,'talk',next,file);fs.writeFileSync(report,'{"frames":72}');api.writeArtifactReceipt(f.root,'talk',next,report,{dependencies:[dependency]});
+  assert.equal(api.artifactStatus(f.root,'talk',next,report).state,'current');
+  fs.writeFileSync(file,'new rendered bytes');api.writeArtifactReceipt(f.root,'talk',next,file);
+  assert.equal(api.artifactStatus(f.root,'talk',next,file).state,'current');assert.equal(api.artifactStatus(f.root,'talk',next,report).state,'stale');
+  const newReport=path.join(f.root,'after.json');fs.writeFileSync(newReport,'{}');assert.throws(()=>api.writeArtifactReceipt(f.root,'talk',next,newReport,{dependencies:[dependency]}),/review|dependency|changed/i);assert.equal(fs.existsSync(`${newReport}.receipt.json`),false);
+ }finally{f.cleanup();}
+});
+for(const operation of ['apply','snapshot'])for(const timing of ['lock','publication'])for(const changed of ['transcript','source','edit'])test(`${operation} rejects ${changed} mutation at ${timing} without publishing inconsistent snapshots`,t=>{
+ const f=fixture();try{
+  const plan=f.plan(),before=f.read('edit.json');let injected=false;
+  const mutate=()=>{injected=true;if(changed==='transcript')f.write('transcript.json',{...f.transcript,words:[{...f.transcript.words[0],text:'Race'},f.transcript.words[1]]});else if(changed==='source')fs.appendFileSync(path.join(f.root,'public/input.mp4'),' replaced');else f.write('edit.json',{...before,title:'Concurrent edit'});};
+  if(timing==='lock'){
+   const open=fs.openSync;t.mock.method(fs,'openSync',(file,flags,...rest)=>{if(!injected&&file===path.join(f.dir,'dialogue/.lock'))mutate();return open(file,flags,...rest);});
+  }else{
+   const write=fs.writeFileSync;t.mock.method(fs,'writeFileSync',(file,...rest)=>{const result=write(file,...rest);if(!injected&&typeof file==='string'&&file.endsWith('/receipt.json')&&file.includes('/dialogue/.v'))mutate();return result;});
+  }
+  assert.throws(()=>operation==='apply'?f.apply(plan):api.snapshotDialogue(f.root,'talk',before,{sourceDuration:2.002}),/changed|match|concurrent/i);
+  assert.equal(injected,true);assert.equal(fs.existsSync(path.join(f.dir,'dialogue/current.json')),false);assert.deepEqual(f.read('edit.json'),changed==='edit'?{...before,title:'Concurrent edit'}:before);
+  assert.deepEqual(fs.readdirSync(path.join(f.dir,'dialogue')),[]);
+ }finally{f.cleanup();}
+});

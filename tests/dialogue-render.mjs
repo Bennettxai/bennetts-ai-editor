@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
-import {artifactStatus,dialogueStatus} from '../src/dialogue.mjs';
+import {artifactStatus,dialogueStatus,fileSha256} from '../src/dialogue.mjs';
 const root=path.resolve('.'),dir=process.env.EDITOR_DIALOGUE_EVIDENCE_DIR??fs.mkdtempSync(path.join(os.tmpdir(),'editor-dialogue-render-'));
 function run(command,args,options={}){const r=spawnSync(command,args,{cwd:dir,encoding:'utf8',maxBuffer:16*1024*1024,...options});assert.equal(r.status,0,r.stderr||r.stdout);return r;}
 const editor=(...args)=>run(process.execPath,[path.join(root,'scripts/editor.mjs'),...args]);
@@ -41,6 +41,8 @@ test('real 60000/1001 three-clip draft retains reviewed frames, mapped words and
   const report=read('output/review/talk-draft/report.json');for(const name of ['size','fps','frames','audio'])assert.equal(report.checks.find(c=>c.name===name).pass,true,name);
   assert.equal(report.dialogue.gates.listening.state,'pending');assert.equal(dialogueStatus(dir,'talk',edit).gates.takeSelection.state,'pending');
   assert.equal(artifactStatus(dir,'talk',edit,path.join(dir,'output/review/talk-draft/report.json')).state,'current');
+  const reportReceipt=read('output/review/talk-draft/report.json.receipt.json');
+  assert.equal(reportReceipt.dependencies[0].sha256,fileSha256(output));assert.equal(reportReceipt.dependencies[0].receiptSha256,fileSha256(`${output}.receipt.json`));
   const transcript=read('projects/talk/transcript.json');transcript.words[0].text='Changed';write('projects/talk/transcript.json',transcript);
   assert.equal(artifactStatus(dir,'talk',edit,output).state,'stale');
   const rejected=spawnSync(process.execPath,[path.join(root,'scripts/editor.mjs'),'draft','talk'],{cwd:dir,encoding:'utf8'});assert.notEqual(rejected.status,0);assert.match(rejected.stderr,/snapshot/);
