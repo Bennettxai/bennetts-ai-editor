@@ -35,11 +35,11 @@ test('cut writes a proposal with a decision log, and --apply replaces clips and 
   assert.notEqual(run('cut','talk').status,0,'needs a transcript first');
   run('transcribe','talk','--json',json);
   const before=read('edit.json');
-  let result=run('cut','talk');assert.equal(result.status,0,result.stderr);
+  let result=run('cut','talk','--remove-fillers');assert.equal(result.status,0,result.stderr);
   assert.match(result.stdout,/filler/i);
   const proposal=read('cuts.proposed.json');assert.ok(proposal.clips.length>=2);assert.ok(proposal.decisions.some(d=>d.action==='CUT'));
   assert.deepEqual(read('edit.json'),before,'proposal alone must not touch edit.json');
-  result=run('cut','talk','--apply','--remove-fillers');assert.equal(result.status,0,result.stderr);
+  result=run('cut','talk','--apply');assert.equal(result.status,0,result.stderr);
   const edit=read('edit.json');assert.deepEqual(edit.clips,read('cuts.proposed.json').clips);
   assert.equal(edit.captionStyle,'word');assert.deepEqual(edit.captions.map(c=>c.text),['MOST','PEOPLE','QUIT','HERE','IS','WHY']);
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
@@ -50,6 +50,7 @@ test('cut --apply refuses to strand cards or visuals outside the new length',()=
  try{
   run('transcribe','talk','--json',json);
   const edit=read('edit.json');edit.cards=[{start:4,end:5.5,text:'Late card'}];write('edit.json',edit);
+  assert.equal(run('cut','talk').status,0);
   const result=run('cut','talk','--apply');assert.notEqual(result.status,0);assert.match(result.stderr,/cards/);
   assert.deepEqual(read('edit.json'),edit);
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
@@ -109,10 +110,12 @@ test('re-applying cuts keeps hand-removed takes and framing, and refuses to repl
  try{
   run('transcribe','talk','--json',json);
   const edit=read('edit.json');edit.clips=[{start:0,end:3.5,zoom:1.2,focusX:40}];edit.captions=[];write('edit.json',edit);
+  assert.equal(run('cut','talk').status,0);
   let result=run('cut','talk','--apply');assert.equal(result.status,0,result.stderr);
   const clips=read('edit.json').clips;
   assert.ok(clips.every(c=>c.end<=3.5+1e-9&&c.zoom===1.2&&c.focusX===40),JSON.stringify(clips));
   const phrase=read('edit.json');phrase.captionStyle='phrase';phrase.captions=[{start:0,end:.5,text:'Hand written'}];write('edit.json',phrase);
+  assert.equal(run('cut','talk').status,0);
   result=run('cut','talk','--apply');assert.notEqual(result.status,0);assert.match(result.stderr,/phrase captions/i);
   result=run('cut','talk','--apply','--replace-captions');assert.equal(result.status,0,result.stderr);assert.equal(read('edit.json').captionStyle,'word');
  }finally{fs.rmSync(dir,{recursive:true,force:true});}

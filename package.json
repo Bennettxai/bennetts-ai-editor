@@ -7,6 +7,7 @@
     "init": "node scripts/editor.mjs init",
     "transcribe": "node scripts/editor.mjs transcribe",
     "cut": "node scripts/editor.mjs cut",
+    "dialogue": "node scripts/editor.mjs dialogue",
     "captions": "node scripts/editor.mjs captions",
     "words": "node scripts/editor.mjs words",
     "validate": "node scripts/editor.mjs validate",

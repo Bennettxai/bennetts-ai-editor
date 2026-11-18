@@ -4,9 +4,10 @@ import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {safeSlug,validateEdit,lintEdit,durationFrames,mediaPath} from '../src/edit.mjs';
-import {parseSrt,mapCaptions,mapWords,captionsFromWords} from '../src/captions.mjs';
+import {parseSrt,mapCaptions,captionsFromWords} from '../src/captions.mjs';
 import {parseTranscript,parseSilences,silenceThreshold,noiseFloor,refineWords} from '../src/transcript.mjs';
-import {proposeCuts,clipsWithin} from '../src/cuts.mjs';
+import {proposeCuts} from '../src/cuts.mjs';
+import {createProposal,applyProposal,snapshotDialogue,recordDialogueReview,dialogueStatus,assertDialogueIntegrity,dialogueOutput,writeArtifactReceipt,artifactStatus,artifactIdentity} from '../src/dialogue.mjs';
 import {loudnormFilter,parseLoudnorm,MASTER} from '../src/audio.mjs';
 import {review} from './review.mjs';
 import {getFormat,parseFps} from '../src/format.mjs';
@@ -15,7 +16,9 @@ const root=process.cwd();
 const USAGE=`Usage:
   npm run init -- <slug> --input <video> [--resolution 4k|1080p] [--fps <integer-or-rational>]
   npm run transcribe -- <slug> [--json <whisper.json>] [--model <ggml model>]
-  npm run cut -- <slug> [--max-pause 0.35] [--remove-fillers] [--apply [--replace-captions]]
+  npm run cut -- <slug> [--plan <json>] [--max-pause 0.35] [--remove-fillers]
+  npm run cut -- <slug> --apply [--plan <json>] [--clear-overlays] [--replace-captions]
+  npm run dialogue -- <slug> [--snapshot [--clear-overlays] [--replace-captions] [--exceptions <json>] | --review <json>]
   npm run captions -- <slug> --words [--group 1] [--apply]   |   --srt <file> [--apply]
   npm run words -- <slug>
   npm run validate -- <slug>
@@ -64,7 +67,7 @@ function checkMedia(edit){
  return duration;
 }
 function load(slug,replaceCaptions=false){
- const parsed=readEdit(slug);
+ const parsed=readEdit(slug);assertDialogueIntegrity(root,slug,parsed);
  const edit=validateEdit(replaceCaptions?{...parsed,captions:[]}:parsed);
  checkMedia(edit);
  return edit;
@@ -80,7 +83,6 @@ function transcriptData(slug){
 function extractWav(source,wav){
  execute('ffmpeg',['-v','error','-y','-i',source,'-vn','-af','aresample=async=1:first_pts=0','-ar','16000','-ac','1','-c:a','pcm_s16le',wav]);
 }
-const transcriptWords=slug=>transcriptData(slug).words;
 // Silences measured from the audio itself, relative to how loud this recording is.
 function detectSilences(file,duration){
  const mean=/mean_volume: (-?[\d.]+) dB/.exec(execute('ffmpeg',['-hide_banner','-nostats','-i',file,'-vn','-af','volumedetect','-f','null','-']).stderr);
@@ -165,29 +167,42 @@ function transcribe(slug,args){
 }
 
 // ---------- cut ----------
-function overlayErrors(edit){try{validateEdit(edit);return null;}catch(error){return error.message;}}
 function cut(slug,args){
- const edit=validateEdit(readEdit(slug));const duration=checkMedia(edit);const {fps}=getFormat(edit);
+ const raw=readEdit(slug);assertDialogueIntegrity(root,slug,raw);
+ const edit=validateEdit(raw);const duration=checkMedia(edit);const {fps}=getFormat(edit);
+ const planFile=path.resolve(flag(args,'--plan')??projectFile(slug,'cuts.proposed.json'));
+ if(args.includes('--apply')){
+  if(args.includes('--max-pause')||args.includes('--remove-fillers'))throw new Error('--apply uses the saved proposal exactly. Generate and review a new proposal before changing --max-pause or --remove-fillers.');
+  if(!fs.existsSync(planFile))throw new Error(`No saved proposal at ${planFile}. Run npm run cut -- ${slug}, review its selections, then use --apply (or --plan <json>).`);
+  applyProposal(root,slug,edit,JSON.parse(fs.readFileSync(planFile,'utf8')),{sourceDuration:duration,clearOverlays:args.includes('--clear-overlays'),replaceCaptions:args.includes('--replace-captions')});
+  console.log('Applied the saved plan, archived the previous state and rebuilt word captions.');
+  printDialogueStatus(slug);return;
+ }
  const maxPause=flag(args,'--max-pause');
  const {words:spoken,silences,heard}=transcriptData(slug);
  if(maxPause!==undefined&&!(Number(maxPause)>=0.1&&Number(maxPause)<=3))throw new Error('--max-pause must be 0.1–3 seconds.');
- const result=proposeCuts(spoken,duration,{...(maxPause?{maxPause:Number(maxPause)}:{}),removeFillers:args.includes('--remove-fillers'),...(silences?{silences,heard}:{})},fps);
- writeJson(projectFile(slug,'cuts.proposed.json'),result);
+ const generated=proposeCuts(spoken,duration,{...(maxPause?{maxPause:Number(maxPause)}:{}),removeFillers:args.includes('--remove-fillers'),...(silences?{silences,heard}:{})},fps);
+ const result=createProposal(root,slug,edit,generated,duration);writeJson(planFile,result);
  const kept=durationFrames({...edit,clips:result.clips})/fps;
- console.log(`Proposed ${result.clips.length} clips: ${kept.toFixed(2)} s kept, ${result.removedSeconds.toFixed(2)} s removed.`);
+ console.log(`Proposed ${result.clips.length} clips: ${kept.toFixed(2)} s kept. Saved: ${planFile}`);
  for(const d of result.decisions)console.log(`  ${d.action.padEnd(4)} at ${d.at.toFixed(2)} s  ${d.reason}`);
  for(const f of result.flags)console.log(`  ${f.type.toUpperCase()} at ${f.at.toFixed(2)} s  "${f.text}"  ${f.note}`);
- console.log(`Full log: projects/${slug}/cuts.proposed.json. Listen to every join before approving.`);
- if(!args.includes('--apply')){console.log('edit.json was not changed. Add --apply after review.');return;}
- if(edit.captionStyle!=='word'&&edit.captions?.length&&!args.includes('--replace-captions'))throw new Error('This project has phrase captions, and cutting would move them off their words. Re-import them after cutting (npm run captions -- <slug> --srt …), or add --replace-captions to switch to word captions.');
- // Cut only inside the clips you already have: takes you removed stay removed, framing is kept.
- const clips=clipsWithin(edit.clips,result.clips,fps);
- const next={...edit,clips,captionStyle:'word'};
- next.captions=captionsFromWords(mapWords(transcriptWords(slug),clips,fps),durationFrames(next)/fps,{fps});
- const problem=overlayErrors(next);
- if(problem)throw new Error(`Cuts not applied: ${problem} Re-time or remove those items first (cuts change every output time).`);
- writeJson(projectFile(slug,'edit.json'),next);
- console.log('Applied cuts and rebuilt word captions. Cards, visuals and SFX use output times: re-check them now (npm run words lists the new times).');
+ console.log('edit.json was not changed. Review takes, gaps and every join; --apply uses this saved plan without regenerating it.');
+}
+function printDialogueStatus(slug){
+ const status=dialogueStatus(root,slug,readEdit(slug));console.log(JSON.stringify(status,null,2));
+ if(status.gates){const pending=Object.entries(status.gates).filter(([,g])=>g.state!=='pass').map(([name,g])=>`${name}: ${g.state}`);if(pending.length)console.log(`Human review remains: ${pending.join(', ')}. A preview is allowed; this is not a fully reviewed delivery.`);}
+ return status;
+}
+function dialogue(slug,args){
+ if(args.includes('--snapshot')&&args.includes('--review'))throw new Error('Use --snapshot or --review, not both.');
+ const edit=readEdit(slug);
+ if(args.includes('--snapshot')){
+  const core=validateEdit({...edit,captions:[],cards:[],visuals:[],sfx:[]});const sourceDuration=checkMedia(core);
+  const exceptions=flag(args,'--exceptions');
+  snapshotDialogue(root,slug,edit,{sourceDuration,clearOverlays:args.includes('--clear-overlays'),replaceCaptions:args.includes('--replace-captions'),...(exceptions?{partialWordExceptions:JSON.parse(fs.readFileSync(exceptions,'utf8'))}:{})});
+ }else if(args.includes('--review'))recordDialogueReview(root,slug,edit,JSON.parse(fs.readFileSync(flag(args,'--review'),'utf8')));
+ printDialogueStatus(slug);
 }
 
 // ---------- captions ----------
@@ -197,7 +212,7 @@ function captions(slug,args){
   if(!Number.isInteger(group)||group<1||group>5)throw new Error('--group must be 1–5 words.');
   const {fps}=getFormat(edit);
   const total=durationFrames(edit)/fps;
-  const mapped=captionsFromWords(mapWords(transcriptWords(slug),edit.clips,fps),total,{group,fps});
+  const mapped=captionsFromWords(dialogueOutput(root,slug,edit).words,total,{group,fps});
   const proposed=validateEdit({...edit,captions:mapped,captionStyle:'word'});
   writeJson(projectFile(slug,'captions.proposed.json'),mapped);
   console.log(`Wrote ${mapped.length} word captions to projects/${slug}/captions.proposed.json.`);
@@ -222,9 +237,9 @@ function captions(slug,args){
 
 // ---------- words (output clock, for syncing visuals and SFX) ----------
 function words(slug){
- const edit=validateEdit(readEdit(slug));
- const mapped=mapWords(transcriptWords(slug),edit.clips,getFormat(edit).fps);
- writeJson(projectFile(slug,'words.output.json'),{clock:'output',words:mapped});
+ const edit=load(slug);
+ const output=dialogueOutput(root,slug,edit),mapped=output.words;
+ writeJson(projectFile(slug,'words.output.json'),output);
  console.log(mapped.map(w=>`${w.start.toFixed(2).padStart(7)}  ${w.text}`).join('\n'));
  console.log(`\n${mapped.length} words on the finished-edit clock. Saved to projects/${slug}/words.output.json.`);
 }
@@ -240,7 +255,8 @@ function master(file){
  console.log(`Mastered audio to ${MASTER.integrated} LUFS integrated, ${MASTER.truePeak} dBTP peak ceiling (measured ${measured.input_i} LUFS before).`);
 }
 function render(slug,args=[],draft=false){
- const edit=load(slug);const props=projectFile(slug,'.render-props.json');
+ const edit=load(slug);const props=projectFile(slug,'.render-props.json'),expectedIdentity=artifactIdentity(root,slug,edit);
+ printDialogueStatus(slug);
  for(const warning of lintEdit(edit))console.warn(`Warning: ${warning}`);
  writeJson(props,{edit,guides:args.includes('--guides')});
  const cli=path.join(root,'node_modules','@remotion','cli','remotion-cli.js');
@@ -249,6 +265,7 @@ function render(slug,args=[],draft=false){
  const quality=draft?['--crf','28','--scale','0.5']:['--crf','10','--scale',String(getFormat(edit).scale)];
  execute(process.execPath,[cli,'render','src/index.ts','BennettsEditor',output,'--props',props,'--codec','h264',...quality,'--concurrency','2'],{stdio:'inherit'});
  if(!draft&&!args.includes('--no-master'))master(path.join(root,output));
+ writeArtifactReceipt(root,slug,edit,path.join(root,output),{expectedIdentity});
  console.log(`Exported ${output}${draft?'':`. Next: npm run review -- ${slug}`}`);
 }
 function demo(){
@@ -268,6 +285,7 @@ try{
  if(command==='init')init(slug,flag(args,'--input'),{fps:flag(args,'--fps'),resolution:flag(args,'--resolution')});
  else if(command==='transcribe')transcribe(slug,args);
  else if(command==='cut')cut(slug,args);
+ else if(command==='dialogue')dialogue(slug,args);
  else if(command==='captions')captions(slug,args);
  else if(command==='words')words(slug);
  else if(command==='validate'){
@@ -277,7 +295,15 @@ try{
  }
  else if(command==='render')render(slug,args);
  else if(command==='draft')render(slug,args,true);
- else if(command==='review')review(root,slug,{draft:args.includes('--draft'),edit:load(slug)});
+ else if(command==='review'){
+  const edit=load(slug),draft=args.includes('--draft'),file=path.join(root,draft?`output/drafts/${slug}.mp4`:`output/${slug}.mp4`);
+  const status=artifactStatus(root,slug,edit,file),dialogueState=printDialogueStatus(slug);
+  if(status.state==='stale'||(dialogueState.revision&&status.state==='unverified'))throw new Error(`Cannot review ${status.state} render: ${status.issues.join('; ')}. Render the current edit first.`);
+  if(status.state==='unverified')console.warn('Legacy render has no receipt; this technical review cannot establish its source/edit identity.');
+  const report=review(root,slug,{draft,edit});
+  const reportFile=path.join(root,'output/review',draft?`${slug}-draft`:slug,'report.json');
+  writeJson(reportFile,{...report,artifact:status,dialogue:dialogueState});writeArtifactReceipt(root,slug,edit,reportFile);
+ }
  else if(command==='demo')demo();
  else throw new Error(USAGE);
 }catch(error){console.error(`Editor: ${error.message}`);process.exitCode=1;}
